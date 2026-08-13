@@ -71,6 +71,9 @@ import type {
   PurchaseOrder,
   PurchaseStatus,
   Role,
+  Schedule,
+  SchedulePublication,
+  ScheduleService,
 } from './types'
 
 type Screen =
@@ -85,6 +88,7 @@ type Screen =
   | 'checklist-templates'
   | 'checklist-new'
   | 'checklist-detail'
+  | 'schedule'
   | 'ai-inbox'
 
 const PROJECT = { name: 'Residencial Aurora', code: 'DEMO-2026-001', location: 'São Paulo — SP' }
@@ -362,13 +366,15 @@ function Dashboard({ user, data, navigate }: { user: DemoUser; data: AppData; na
   const todayDiary = data.diaries.some((diary) => diary.date === today())
   const weekOrder = data.purchases.some((order) => isInCurrentWeek(order.createdAt))
   const activeChecklist = data.checklists.some((checklist) => checklist.items.some((item) => item.answer === 'nonconform' && item.nonConformityStatus !== 'resolved'))
-  const fieldProgress = [todayDiary, weekOrder, activeChecklist].filter(Boolean).length
+  const scheduleUpdated = data.schedule.status === 'review'
+  const fieldProgress = [todayDiary, weekOrder, activeChecklist, scheduleUpdated].filter(Boolean).length
   const reviewDiaries = data.diaries.filter((diary) => diary.status === 'review').length
   const reviewChecklists = data.checklists.filter((checklist) => checklist.items.some((item) => item.nonConformityStatus === 'awaiting_validation')).length
   const approvalOrders = data.purchases.filter((order) => ['solicitado', 'em_aprovacao'].includes(order.status)).length
   const newAiEvidence = data.aiEvidence.filter((item) => item.status === 'new').length
   const publishedDiaries = data.diaries.filter((diary) => diary.status === 'published')
   const publishedChecklists = data.checklists.filter((checklist) => checklist.publications.length > 0)
+  const scheduleReviews = data.schedule.status === 'review' ? 1 : 0
 
   if (user.role === 'client') {
     return (
@@ -381,6 +387,9 @@ function Dashboard({ user, data, navigate }: { user: DemoUser; data: AppData; na
         <ProjectSummary user={user} data={data} navigate={navigate} />
         <div className="section-heading"><div><span className="eyebrow">Atualizações</span><h2>Conteúdo publicado</h2></div></div>
         <div className="client-grid">
+          <button className="client-summary-card" onClick={() => navigate('schedule')}>
+            <span><CalendarDays size={24} /></span><strong>{data.schedule.publications.length}</strong><small>Cronograma publicado</small><ChevronRight size={20} />
+          </button>
           <button className="client-summary-card" onClick={() => navigate('diaries')}>
             <span><BookOpenText size={24} /></span><strong>{publishedDiaries.length}</strong><small>Diários disponíveis</small><ChevronRight size={20} />
           </button>
@@ -398,11 +407,12 @@ function Dashboard({ user, data, navigate }: { user: DemoUser; data: AppData; na
       <div className="page dashboard-page">
         <section className="welcome-card office-welcome">
           <div><span className="eyebrow">Central do escritório</span><h1>Bom trabalho, {user.name.split(' ')[0]}</h1><p>Revise o que chegou do campo e publique atualizações com segurança.</p></div>
-          <span className="large-counter">{reviewDiaries + reviewChecklists + approvalOrders + newAiEvidence}<small>ações pendentes</small></span>
+          <span className="large-counter">{reviewDiaries + reviewChecklists + approvalOrders + newAiEvidence + scheduleReviews}<small>ações pendentes</small></span>
         </section>
         <ProjectSummary user={user} data={data} navigate={navigate} />
-        <div className="action-grid four">
+        <div className="action-grid five">
           <button className="action-card ai-action-card" onClick={() => navigate('ai-inbox')}><span className="action-icon"><Sparkles /></span><span><strong>Caixa de entrada IA</strong><small>{newAiEvidence} evidências para revisar</small></span><em>{newAiEvidence}</em><ChevronRight /></button>
+          <button className="action-card" onClick={() => navigate('schedule')}><span className="action-icon"><CalendarDays /></span><span><strong>Cronograma</strong><small>{scheduleReviews ? '1 ajuste aguardando aprovação' : 'Versão publicada disponível'}</small></span><em>{scheduleReviews}</em><ChevronRight /></button>
           <button className="action-card" onClick={() => navigate('diaries')}><span className="action-icon"><BookOpenText /></span><span><strong>Diários</strong><small>{reviewDiaries} aguardando revisão</small></span><em>{reviewDiaries}</em><ChevronRight /></button>
           <button className="action-card" onClick={() => navigate('purchases')}><span className="action-icon"><ShoppingCart /></span><span><strong>Compras</strong><small>{approvalOrders} para acompanhar</small></span><em>{approvalOrders}</em><ChevronRight /></button>
           <button className="action-card" onClick={() => navigate('checklists')}><span className="action-icon"><ClipboardCheck /></span><span><strong>Checklist</strong><small>{reviewChecklists} aguardando revisão</small></span><em>{reviewChecklists}</em><ChevronRight /></button>
@@ -415,10 +425,11 @@ function Dashboard({ user, data, navigate }: { user: DemoUser; data: AppData; na
     <div className="page dashboard-page">
       <section className="welcome-card field-welcome">
         <div><span className="eyebrow">Equipe de campo</span><h1>Olá, {user.name.split(' ')[0]}!</h1><p>O que você precisa registrar hoje?</p></div>
-        <div className="day-progress"><span>{fieldProgress}/3</span><small>rotinas em andamento</small><div><i style={{ width: `${(fieldProgress / 3) * 100}%` }} /></div></div>
+        <div className="day-progress"><span>{fieldProgress}/4</span><small>rotinas em andamento</small><div><i style={{ width: `${(fieldProgress / 4) * 100}%` }} /></div></div>
       </section>
-      <div className="action-grid four">
+      <div className="action-grid five">
         <button className="action-card large ai-action-card" onClick={() => navigate('ai-inbox')}><span className="action-icon"><Sparkles /></span><span><strong>Copiloto IA</strong><small>WhatsApp, fotos e reuniões</small></span>{newAiEvidence > 0 && <em>{newAiEvidence}</em>}<ChevronRight /></button>
+        <button className="action-card large" onClick={() => navigate('schedule')}><span className="action-icon"><CalendarDays /></span><span><strong>Cronograma</strong><small>Consulte e ajuste os serviços</small></span>{scheduleUpdated && <em className="done"><Check size={16} /></em>}<ChevronRight /></button>
         <button className="action-card large" onClick={() => navigate('diaries')}><span className="action-icon"><BookOpenText /></span><span><strong>Diário de obra</strong><small>Fotos e registro do dia</small></span>{todayDiary && <em className="done"><Check size={16} /></em>}<ChevronRight /></button>
         <button className="action-card large" onClick={() => navigate('purchases')}><span className="action-icon"><ShoppingCart /></span><span><strong>Compras</strong><small>Solicite o que a obra precisa</small></span>{weekOrder && <em className="done"><Check size={16} /></em>}<ChevronRight /></button>
         <button className="action-card large" onClick={() => navigate('checklists')}><span className="action-icon"><ClipboardCheck /></span><span><strong>Checklist</strong><small>Registre antes e depois</small></span>{activeChecklist && <em className="done"><Check size={16} /></em>}<ChevronRight /></button>
@@ -443,7 +454,8 @@ function buildOfficeSummary(data: AppData): SummaryCopy {
   const materialOrders = data.purchases.filter((item) => !['entregue', 'cancelado'].includes(item.status))
   const urgentOrders = materialOrders.filter((item) => item.urgency === 'urgente')
   const newEvidence = data.aiEvidence.filter((item) => item.status === 'new')
-  const pendingCount = reviewDiaries.length + reviewChecklists.length + materialOrders.length + newEvidence.length
+  const scheduleReview = data.schedule.status === 'review' ? 1 : 0
+  const pendingCount = reviewDiaries.length + reviewChecklists.length + materialOrders.length + newEvidence.length + scheduleReview
 
   return {
     overview: pendingCount > 0
@@ -452,15 +464,16 @@ function buildOfficeSummary(data: AppData): SummaryCopy {
     advances: latestDiary
       ? latestDiary.weeklyServices
       : 'Ainda não há um Diário de Obra disponível para identificar os avanços recentes.',
-    attention: reviewDiaries.length || reviewChecklists.length
-      ? `${reviewDiaries.length} diário${reviewDiaries.length === 1 ? '' : 's'} e ${reviewChecklists.length} checklist${reviewChecklists.length === 1 ? '' : 's'} exigem revisão ou validação.`
-      : 'Não há Diários ou correções de Checklist aguardando validação.',
+    attention: reviewDiaries.length || reviewChecklists.length || scheduleReview
+      ? `${reviewDiaries.length} diário${reviewDiaries.length === 1 ? '' : 's'}, ${reviewChecklists.length} checklist${reviewChecklists.length === 1 ? '' : 's'} e ${scheduleReview} cronograma exigem revisão ou validação.`
+      : 'Não há Diários, correções de Checklist ou ajustes de Cronograma aguardando validação.',
     materials: materialOrders.length
       ? `${materialOrders.length} pedido${materialOrders.length === 1 ? '' : 's'} em aberto${urgentOrders.length ? `, sendo ${urgentOrders.length} urgente${urgentOrders.length === 1 ? '' : 's'}` : ''}. Conferir prazo e continuidade das frentes.`
       : 'Não há pedidos de material em aberto.',
     nextActions: [
       reviewDiaries.length ? `revisar ${reviewDiaries.length} diário${reviewDiaries.length === 1 ? '' : 's'}` : '',
       reviewChecklists.length ? `validar ${reviewChecklists.length} checklist${reviewChecklists.length === 1 ? '' : 's'}` : '',
+      scheduleReview ? 'aprovar o ajuste do cronograma' : '',
       newEvidence.length ? `analisar ${newEvidence.length} evidência${newEvidence.length === 1 ? '' : 's'} do Copiloto` : '',
     ].filter(Boolean).join('; ') || 'Manter o acompanhamento e publicar a próxima atualização quando houver novos registros.',
   }
@@ -473,11 +486,12 @@ function buildClientSummary(data: AppData): SummaryCopy {
   const latestDiary = publishedDiaries[0]
   const latestChecklist = publishedChecklists[0]
   const latestPublication = latestChecklist?.publications.at(-1)
+  const schedulePublication = data.schedule.publications.at(-1)
   const completedItems = latestPublication?.items.filter((item) => item.answer === 'conform' || item.nonConformityStatus === 'resolved').length ?? 0
   const totalItems = latestPublication?.items.length ?? 0
 
   return {
-    overview: publishedDiaries.length || publishedChecklists.length
+    overview: publishedDiaries.length || publishedChecklists.length || schedulePublication
       ? 'A obra possui atualizações revisadas pelo escritório e disponíveis para acompanhamento.'
       : 'O escritório ainda não publicou uma atualização da obra.',
     advances: latestDiary?.weeklyServices ?? 'Os próximos avanços aparecerão após revisão e publicação pelo escritório.',
@@ -485,7 +499,7 @@ function buildClientSummary(data: AppData): SummaryCopy {
       ? `${latestPublication.title}: ${completedItems} de ${totalItems} item${totalItems === 1 ? '' : 's'} conforme${totalItems === 1 ? '' : 's'} ou resolvido${totalItems === 1 ? '' : 's'}.`
       : 'Ainda não há checklist publicado para esta obra.',
     materials: 'Informações operacionais e solicitações internas são protegidas e não fazem parte desta versão.',
-    nextActions: 'Novos registros serão apresentados aqui somente depois da revisão e publicação pelo escritório.',
+    nextActions: schedulePublication ? `Acompanhar o Cronograma publicado na versão ${schedulePublication.version}. Novos ajustes aparecerão somente após publicação.` : 'Novos registros serão apresentados aqui somente depois da revisão e publicação pelo escritório.',
   }
 }
 
@@ -536,6 +550,7 @@ function ProjectSummary({ user, data, navigate }: { user: DemoUser; data: AppDat
       <footer className="project-summary-sources">
         <span>Fontes desta análise</span>
         <div>
+          <button type="button" onClick={() => navigate('schedule')}>Cronograma {clientView ? 'publicado' : ''}</button>
           <button type="button" onClick={() => navigate('diaries')}>Diários {clientView ? 'publicados' : ''}</button>
           {!clientView && <button type="button" onClick={() => navigate('purchases')}>Compras</button>}
           <button type="button" onClick={() => navigate('checklists')}>Checklists {clientView ? 'publicados' : ''}</button>
@@ -911,10 +926,111 @@ function ChecklistDetail({ checklist, user, back, update, publish, notify }: { c
   return <div className="page narrow-page printable"><PageTitle icon={<ClipboardCheck size={24} />} title={checklist.title} subtitle={`${checklist.environment} · Vistoria de ${checklist.inspector}`} back={back} /><div className="checklist-hero"><div className="progress-ring"><strong>{progress}%</strong><small>qualidade</small></div><div><StatusBadge status={checklist.status}>{checklistLabel[checklist.status]}</StatusBadge><p>{checklist.items.length} itens · {checklist.publications.length} versão(ões) publicada(s)</p><div className="progress-line"><i style={{ width: `${progress}%` }} /></div></div></div>{user.role === 'office' && <section className="add-item-box"><label className="field"><span>Novo item durante a vistoria</span><input value={description} onChange={(event) => setDescription(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && addItem()} placeholder="O que deve ser verificado?" /></label><button className="button primary" onClick={addItem}><Plus size={18} /> Adicionar</button></section>}<div className="check-items">{checklist.items.map((item, index) => <article className={`check-item answer-${item.answer}`} key={item.id}><div className="check-item-header"><span className="check-index">{index + 1}</span><div><strong>{item.description}</strong><small>{checklistAnswerLabel[item.answer]}</small></div>{user.role === 'office' && <button className="icon-button small" onClick={() => removeItem(item)} aria-label={`Excluir item ${index + 1}`}><Trash2 size={17} /></button>}</div>{user.role === 'office' && <label className="field compact-field"><span>Resultado da vistoria</span><select aria-label={`Resultado do item ${index + 1}`} value={item.answer} onChange={(event) => changeAnswer(item, event.target.value as ChecklistAnswer)}>{Object.entries(checklistAnswerLabel).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>}{item.answer !== 'pending' && user.role === 'office' && <label className="field compact-field"><span>Observação pública</span><textarea rows={2} value={item.publicNote} onChange={(event) => updateItem(item.id, { publicNote: event.target.value })} /></label>}{item.answer === 'nonconform' && <section className="nonconform-box"><div className="nonconform-heading"><CircleAlert size={19} /><strong>Não conformidade</strong>{item.nonConformityStatus && <StatusBadge status={item.nonConformityStatus}>{nonConformityLabel[item.nonConformityStatus]}</StatusBadge>}</div>{user.role === 'office' && <><div className="template-grid"><label className="field compact-field"><span>Responsável por equipe/função *</span><input value={item.assignee} onChange={(event) => updateItem(item.id, { assignee: event.target.value })} /></label><label className="field compact-field"><span>Prazo *</span><input type="date" value={item.dueDate} onChange={(event) => updateItem(item.id, { dueDate: event.target.value })} /></label></div><label className="field compact-field"><span>Nota interna</span><textarea rows={2} value={item.internalNote} onChange={(event) => updateItem(item.id, { internalNote: event.target.value })} /></label></>}<div className="before-after"><div><span>Antes obrigatório</span><SinglePhotoInput label="Foto antes" photo={item.beforePhoto} onPhoto={(photo) => updateItem(item.id, { beforePhoto: photo })} onRemove={async () => { if (item.beforePhoto && !item.beforePhoto.demoAsset) await deletePhoto(item.beforePhoto.id); updateItem(item.id, { beforePhoto: undefined }) }} disabled={user.role !== 'office'} notify={notify} /></div><div><span>Depois</span><SinglePhotoInput label="Foto depois" photo={item.afterPhoto} onPhoto={(photo) => updateItem(item.id, { afterPhoto: photo, nonConformityStatus: 'in_correction' })} onRemove={async () => { if (item.afterPhoto && !item.afterPhoto.demoAsset) await deletePhoto(item.afterPhoto.id); updateItem(item.id, { afterPhoto: undefined }) }} disabled={user.role !== 'field' || item.nonConformityStatus === 'resolved'} notify={notify} /></div></div>{user.role === 'field' && item.nonConformityStatus !== 'resolved' && <><label className="field compact-field"><span>Descrição da correção *</span><textarea rows={3} value={item.correctionDescription ?? ''} onChange={(event) => updateItem(item.id, { correctionDescription: event.target.value, nonConformityStatus: 'in_correction' })} /></label><button className="button primary wide" onClick={() => requestValidation(item)}><Send size={18} /> Enviar correção para validação</button></>}{user.role === 'office' && item.nonConformityStatus === 'awaiting_validation' && <div className="validation-actions"><button className="button secondary" onClick={() => updateItem(item.id, { nonConformityStatus: 'reopened' })}><X size={17} /> Reabrir</button><button className="button primary" onClick={() => updateItem(item.id, { nonConformityStatus: 'resolved', validatedAt: new Date().toISOString(), validatedBy: user.name })}><CheckCircle2 size={17} /> Validar correção</button></div>}</section>}</article>)}</div>{user.role === 'office' && <button className="button primary wide main-cta" onClick={validatePublication}><FileCheck2 size={18} /> {checklist.publications.length ? 'Publicar nova versão' : 'Revisar e publicar'} </button>}{user.role === 'office' && checklist.publications.length > 0 && <section className="publication-history"><strong>Histórico de publicações</strong>{checklist.publications.map((item) => <span key={item.id}>Versão {item.version} · {formatDate(item.publishedAt)} · {item.isPartial ? 'Parcial' : 'Concluída'}</span>)}</section>}</div>
 }
 
+const scheduleStatusLabel = { draft: 'Rascunho', review: 'Aguardando aprovação', published: 'Publicado' } as const
+
+function scheduleDate(value: string) {
+  return new Date(`${value}T12:00:00`)
+}
+
+function daysBetween(start: string, end: string) {
+  return Math.round((scheduleDate(end).getTime() - scheduleDate(start).getTime()) / 86_400_000)
+}
+
+function SchedulePage({ user, schedule, update, notify }: { user: DemoUser; schedule: Schedule; update: (schedule: Schedule) => void; notify: (text: string) => void }) {
+  const [zoom, setZoom] = useState<'days' | 'weeks'>('days')
+  const [adjusting, setAdjusting] = useState(false)
+  const publication = schedule.publications.at(-1)
+  const readOnlyClient = user.role === 'client'
+  const services = readOnlyClient ? publication?.services ?? [] : schedule.services
+  const canEdit = !readOnlyClient
+  const ordered = [...services].sort((a, b) => a.startDate.localeCompare(b.startDate))
+
+  if (readOnlyClient && !publication) {
+    return <div className="page"><PageTitle icon={<CalendarDays size={24} />} title="Cronograma da obra" subtitle="Somente versões publicadas pelo Escritório" /><EmptyState icon={<CalendarDays size={28} />} title="Cronograma ainda não publicado" text="A primeira versão aparecerá aqui depois da revisão do Escritório." /></div>
+  }
+
+  const firstDate = ordered[0]?.startDate ?? today()
+  const lastDate = ordered.reduce((latest, service) => service.endDate > latest ? service.endDate : latest, firstDate)
+  const totalDays = Math.max(1, daysBetween(firstDate, lastDate) + 1)
+  const axisStep = zoom === 'days' ? 1 : 7
+  const axis = Array.from({ length: Math.ceil(totalDays / axisStep) }, (_, index) => {
+    const date = scheduleDate(firstDate)
+    date.setDate(date.getDate() + index * axisStep)
+    return { label: new Intl.DateTimeFormat('pt-BR', zoom === 'days' ? { day: '2-digit', month: '2-digit' } : { day: '2-digit', month: 'short' }).format(date), left: ((index * axisStep) / totalDays) * 100 }
+  })
+  const overallProgress = services.length ? Math.round(services.reduce((sum, item) => sum + item.progress, 0) / services.length) : 0
+  const overdue = services.filter((item) => item.endDate < today() && item.progress < 100)
+  const timelineWidth = Math.max(680, totalDays * (zoom === 'days' ? 38 : 13))
+  const todayOffset = daysBetween(firstDate, today())
+
+  const saveServices = (next: ScheduleService[]) => update({ ...schedule, services: next, status: 'draft', updatedAt: new Date().toISOString(), updatedBy: user.name })
+  const changeService = (id: string, patch: Partial<ScheduleService>) => saveServices(schedule.services.map((item) => item.id === id ? { ...item, ...patch } : item))
+  const addService = () => {
+    const end = scheduleDate(today())
+    end.setDate(end.getDate() + 7)
+    saveServices([...schedule.services, { id: uid('schedule-service'), name: 'Novo serviço', startDate: today(), endDate: end.toISOString().slice(0, 10), progress: 0 }])
+    setAdjusting(true)
+    notify('Novo serviço adicionado ao rascunho.')
+  }
+  const validate = () => {
+    if (!schedule.services.length) return 'Adicione pelo menos um serviço.'
+    if (schedule.services.some((item) => !item.name.trim() || !item.startDate || !item.endDate)) return 'Preencha nome, início e término de todos os serviços.'
+    if (schedule.services.some((item) => item.endDate < item.startDate)) return 'O término não pode ser anterior ao início.'
+    return ''
+  }
+  const requestApproval = () => {
+    const error = validate()
+    if (error) return notify(error)
+    update({ ...schedule, status: 'review', updatedAt: new Date().toISOString(), updatedBy: user.name })
+    setAdjusting(false)
+    notify('Cronograma enviado para aprovação do Escritório.')
+  }
+  const publish = () => {
+    const error = validate()
+    if (error) return notify(error)
+    const publishedAt = new Date().toISOString()
+    const snapshot: SchedulePublication = { id: uid('schedule-publication'), version: schedule.publications.length + 1, publishedAt, publishedBy: user.name, services: schedule.services.map((item) => ({ ...item })) }
+    update({ ...schedule, status: 'published', updatedAt: publishedAt, updatedBy: user.name, publications: [...schedule.publications, snapshot] })
+    setAdjusting(false)
+    notify(`Cronograma publicado como versão ${snapshot.version}.`)
+  }
+
+  return (
+    <div className="page schedule-page">
+      <PageTitle icon={<CalendarDays size={24} />} title="Cronograma da obra" subtitle={readOnlyClient ? `Versão ${publication?.version} publicada pelo Escritório` : 'Dias corridos · dados fictícios para demonstração'} />
+      <section className="schedule-summary" aria-label="Resumo do cronograma">
+        <span className="schedule-summary-icon"><Sparkles size={22} /></span>
+        <div><span className="eyebrow">Resumo IA demonstrativo</span><h2>Situação do cronograma</h2><p>{overdue.length ? `O avanço médio é de ${overallProgress}%. ${overdue.length} serviço${overdue.length === 1 ? '' : 's'} ultrapassou o término previsto e pede atenção.` : `O avanço médio é de ${overallProgress}% e não há serviços vencidos nesta versão.`}</p><small>Nenhum modelo externo conectado · fornecedor de IA será definido futuramente</small></div>
+        <StatusBadge status={readOnlyClient ? 'published' : schedule.status}>{readOnlyClient ? 'Publicado' : scheduleStatusLabel[schedule.status]}</StatusBadge>
+      </section>
+      <section className="schedule-controls">
+        <div><strong>Visualização</strong><div className="segmented-control"><button className={zoom === 'days' ? 'active' : ''} onClick={() => setZoom('days')}>Dias</button><button className={zoom === 'weeks' ? 'active' : ''} onClick={() => setZoom('weeks')}>Semanas</button></div></div>
+        <span><strong>Origem</strong><small>{readOnlyClient ? 'Versão publicada pelo Escritório' : schedule.source === 'api_demo' ? 'API Arquitetool · demonstração fictícia' : 'Alimentação manual'}</small></span>
+        {canEdit && <button className="button secondary" onClick={() => setAdjusting((value) => !value)}><CalendarDays size={18} /> {adjusting ? 'Fechar ajustes' : 'Ajustar cronograma'}</button>}
+      </section>
+      <section className="gantt-card" aria-label="Gráfico de Gantt do cronograma">
+        <div className="gantt-scroll">
+          <div className="gantt-board" style={{ width: `${220 + timelineWidth}px` }}>
+            <div className="gantt-heading"><strong>Serviços</strong><div className="gantt-axis">{axis.map((item) => <span key={`${item.label}-${item.left}`} style={{ left: `${item.left}%` }}>{item.label}</span>)}</div></div>
+            {ordered.map((service) => {
+              const left = Math.max(0, (daysBetween(firstDate, service.startDate) / totalDays) * 100)
+              const width = Math.max(1.2, ((daysBetween(service.startDate, service.endDate) + 1) / totalDays) * 100)
+              return <div className="gantt-row" key={service.id}><div className="gantt-service"><strong>{service.name}</strong><small>{service.progress}% concluído</small></div><div className="gantt-timeline" style={{ '--gantt-step': `${100 / totalDays}%` } as React.CSSProperties}>{todayOffset >= 0 && todayOffset < totalDays && <i className="gantt-today" style={{ left: `${(todayOffset / totalDays) * 100}%` }} aria-label="Hoje" />}<span className="gantt-bar" style={{ left: `${left}%`, width: `${width}%` }} title={`${service.name}: ${formatDate(service.startDate)} a ${formatDate(service.endDate)}`}><i style={{ width: `${service.progress}%` }} /><b>{service.progress}%</b></span></div></div>
+            })}
+          </div>
+        </div>
+        <footer><span><i className="legend-plan" /> Período planejado</span><span><i className="legend-progress" /> Percentual concluído</span><span><i className="legend-today" /> Hoje</span></footer>
+      </section>
+      {adjusting && canEdit && <section className="schedule-editor"><header><div><span className="eyebrow">Ajuste manual</span><h2>Serviços do cronograma</h2></div><button className="button secondary" onClick={addService}><Plus size={18} /> Adicionar serviço</button></header><div className="schedule-service-list">{schedule.services.map((service, index) => <article className="schedule-service-form" key={service.id}><span className="check-index">{index + 1}</span><label className="field compact-field service-name"><span>Serviço</span><input aria-label={`Serviço ${index + 1}`} value={service.name} onChange={(event) => changeService(service.id, { name: event.target.value })} /></label><label className="field compact-field"><span>Início</span><input aria-label={`Início do serviço ${index + 1}`} type="date" value={service.startDate} onChange={(event) => changeService(service.id, { startDate: event.target.value })} /></label><label className="field compact-field"><span>Término</span><input aria-label={`Término do serviço ${index + 1}`} type="date" min={service.startDate} value={service.endDate} onChange={(event) => changeService(service.id, { endDate: event.target.value })} /></label><label className="field compact-field progress-field"><span>Concluído</span><input aria-label={`Percentual do serviço ${index + 1}`} type="number" min="0" max="100" value={service.progress} onChange={(event) => changeService(service.id, { progress: Math.max(0, Math.min(100, Number(event.target.value))) })} /><b>%</b></label><button className="icon-button small" onClick={() => saveServices(schedule.services.filter((item) => item.id !== service.id))} aria-label={`Excluir serviço ${index + 1}`}><Trash2 size={17} /></button></article>)}</div><div className="schedule-editor-actions"><small>As alterações ficam salvas neste aparelho como rascunho.</small>{user.role === 'field' ? <button className="button primary" onClick={requestApproval}><Send size={18} /> Solicitar aprovação</button> : <button className="button primary" onClick={publish}><FileCheck2 size={18} /> Publicar nova versão</button>}</div></section>}
+      {user.role === 'office' && schedule.publications.length > 0 && <section className="publication-history schedule-history"><strong>Versões publicadas — somente Escritório</strong>{[...schedule.publications].reverse().map((item) => <span key={item.id}>Versão {item.version} · {formatDate(item.publishedAt)} · {item.publishedBy} · {item.services.length} serviços</span>)}</section>}
+    </div>
+  )
+}
+
 function AppShell({ user, screen, navigate, logout, children }: { user: DemoUser; screen: Screen; navigate: (screen: Screen) => void; logout: () => void; children: ReactNode }) {
   const nav = user.role === 'client'
-    ? [{ screen: 'home' as Screen, label: 'Início', icon: Home }, { screen: 'diaries' as Screen, label: 'Diários', icon: BookOpenText }, { screen: 'checklists' as Screen, label: 'Checklist', icon: ClipboardCheck }]
-    : [{ screen: 'home' as Screen, label: 'Início', icon: Home }, { screen: 'ai-inbox' as Screen, label: 'Copiloto', icon: Sparkles }, { screen: 'diaries' as Screen, label: 'Diários', icon: BookOpenText }, { screen: 'purchases' as Screen, label: 'Compras', icon: ShoppingCart }, { screen: 'checklists' as Screen, label: 'Checklist', icon: ClipboardCheck }]
+    ? [{ screen: 'home' as Screen, label: 'Início', icon: Home }, { screen: 'schedule' as Screen, label: 'Cronograma', icon: CalendarDays }, { screen: 'diaries' as Screen, label: 'Diários', icon: BookOpenText }, { screen: 'checklists' as Screen, label: 'Checklist', icon: ClipboardCheck }]
+    : [{ screen: 'home' as Screen, label: 'Início', icon: Home }, { screen: 'schedule' as Screen, label: 'Cronograma', icon: CalendarDays }, { screen: 'ai-inbox' as Screen, label: 'Copiloto', icon: Sparkles }, { screen: 'diaries' as Screen, label: 'Diários', icon: BookOpenText }, { screen: 'purchases' as Screen, label: 'Compras', icon: ShoppingCart }, { screen: 'checklists' as Screen, label: 'Checklist', icon: ClipboardCheck }]
   return (
     <div className="app-shell">
       <header className="topbar"><div className="topbar-inner"><button className="brand-button" onClick={() => navigate('home')} aria-label="Ir para o início"><Logo compact /></button><div className="project-info"><strong>{PROJECT.name}</strong><small><MapPin size={13} /> {PROJECT.location} · {PROJECT.code}</small></div><span className={`role-chip role-${user.role}`}>{roleLabel[user.role]}</span><button className="logout-button" onClick={logout}><LogOut size={18} /><span>Sair</span></button></div></header>
@@ -982,6 +1098,7 @@ export default function App() {
     setMessage('Rascunho gerado. Revise as informações antes de publicar.')
     navigate('diary-detail')
   }} />
+  else if (screen === 'schedule') content = <SchedulePage user={user} schedule={data.schedule} notify={setMessage} update={(schedule) => updateData((current) => ({ ...current, schedule }))} />
   else if (screen === 'diaries') content = <DiaryList user={user} data={data} navigate={navigate} openDiary={(id) => { setSelectedDiary(id); navigate('diary-detail') }} />
   else if (screen === 'diary-form' && user.role === 'field') content = <DiaryForm data={data} user={user} back={() => navigate('diaries')} notify={setMessage} onSave={(entry) => { updateData((current) => ({ ...current, diaries: [entry, ...current.diaries] })); setMessage(entry.status === 'review' ? 'Diário enviado para revisão.' : 'Rascunho salvo neste aparelho.'); navigate('diaries') }} />
   else if (screen === 'diary-detail' && diary) content = <DiaryDetail diary={diary} data={data} user={user} back={() => navigate('diaries')} publish={() => { updateData((current) => ({ ...current, diaries: current.diaries.map((item) => item.id === diary.id ? { ...item, status: 'published', publishedAt: new Date().toISOString() } : item) })); setMessage('Diário publicado para o cliente.') }} />

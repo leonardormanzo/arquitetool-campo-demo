@@ -7,6 +7,8 @@ export type NonConformityStatus = 'open' | 'in_correction' | 'awaiting_validatio
 export type AIEvidenceSource = 'whatsapp' | 'photo' | 'meet'
 export type AIEvidenceStatus = 'new' | 'applied' | 'dismissed'
 export type DemoPhotoAsset = 'masonry' | 'electrical'
+export type ScheduleStatus = 'draft' | 'review' | 'published'
+export type ScheduleSource = 'manual' | 'api_demo'
 
 export interface DemoUser {
   role: Role
@@ -159,13 +161,39 @@ export interface Checklist {
   publications: ChecklistPublication[]
 }
 
+export interface ScheduleService {
+  id: string
+  name: string
+  startDate: string
+  endDate: string
+  progress: number
+}
+
+export interface SchedulePublication {
+  id: string
+  version: number
+  publishedAt: string
+  publishedBy: string
+  services: ScheduleService[]
+}
+
+export interface Schedule {
+  status: ScheduleStatus
+  source: ScheduleSource
+  updatedAt: string
+  updatedBy: string
+  services: ScheduleService[]
+  publications: SchedulePublication[]
+}
+
 export interface AppData {
-  version: 3
+  version: 4
   diaries: DiaryEntry[]
   purchases: PurchaseOrder[]
   checklists: Checklist[]
   checklistTemplates: ChecklistTemplate[]
   aiEvidence: AIEvidence[]
+  schedule: Schedule
   onlineSimulation: boolean
 }
 

@@ -21,13 +21,17 @@ describe('Arquitetool Campo', () => {
 
   afterEach(() => cleanup())
 
-  it('oferece o Copiloto IA e os três módulos operacionais para o perfil Campo', async () => {
+  it('oferece o Copiloto IA, Cronograma e os três módulos operacionais para o perfil Campo', async () => {
     render(<App />)
     await loginAs('Campo')
     expect(screen.getByText('Copiloto IA', { selector: '.action-card strong' })).toBeInTheDocument()
+    expect(screen.getByText('Cronograma', { selector: '.action-card strong' })).toBeInTheDocument()
     expect(screen.getByText('Diário de obra', { selector: '.action-card strong' })).toBeInTheDocument()
     expect(screen.getByText('Compras', { selector: '.action-card strong' })).toBeInTheDocument()
     expect(screen.getByText('Checklist', { selector: '.action-card strong' })).toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: /navegação principal/i })
+    expect(within(nav).getByRole('button', { name: /cronograma/i })).toBeInTheDocument()
+    expect(within(nav).getByRole('button', { name: /copiloto/i })).toBeInTheDocument()
   })
 
   it('oculta Compras e conteúdo interno do perfil Cliente', async () => {
@@ -56,8 +60,59 @@ describe('Arquitetool Campo', () => {
     const summary = screen.getByRole('heading', { name: /resumo IA da obra/i }).closest('section')
     expect(summary).toBeTruthy()
     expect(within(summary!).getByRole('button', { name: /^Compras$/i })).toBeInTheDocument()
+    expect(within(summary!).getByRole('button', { name: /^Cronograma$/i })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /atualizar resumo/i }))
     expect(screen.getByText(/atualizado às/i)).toBeInTheDocument()
+  })
+
+  it('permite ao Campo ajustar o Cronograma e solicitar aprovação', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await loginAs('Campo')
+    await user.click(screen.getByText('Cronograma', { selector: '.action-card strong' }).closest('button')!)
+    expect(screen.getByRole('heading', { name: /cronograma da obra/i })).toBeInTheDocument()
+    expect(screen.getByLabelText(/gráfico de gantt/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /ajustar cronograma/i }))
+    const progress = screen.getByLabelText(/percentual do serviço 2/i)
+    await user.clear(progress)
+    await user.type(progress, '76')
+    await user.click(screen.getByRole('button', { name: /solicitar aprovação/i }))
+    expect(screen.getByText(/enviado para aprovação do escritório/i)).toBeInTheDocument()
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')
+    expect(saved.schedule.status).toBe('review')
+    expect(saved.schedule.services[1].progress).toBe(76)
+  })
+
+  it('mostra ao Cliente somente a última versão publicada do Cronograma', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await loginAs('Cliente')
+    expect(screen.getByText('Cronograma publicado', { selector: '.client-summary-card small' })).toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: /navegação principal/i })
+    await user.click(within(nav).getByRole('button', { name: /cronograma/i }))
+    expect(screen.getByText(/versão 1 publicada pelo escritório/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /ajustar cronograma/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/versões publicadas — somente escritório/i)).not.toBeInTheDocument()
+    expect(screen.getByText('62% concluído')).toBeInTheDocument()
+    expect(screen.queryByText('70% concluído')).not.toBeInTheDocument()
+    expect(screen.queryByText(/API Arquitetool/i)).not.toBeInTheDocument()
+  })
+
+  it('permite ao Escritório publicar uma versão imutável do Cronograma', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await loginAs('Escritório')
+    await user.click(screen.getByText('Cronograma', { selector: '.action-card strong' }).closest('button')!)
+    await user.click(screen.getByRole('button', { name: /ajustar cronograma/i }))
+    const progress = screen.getByLabelText(/percentual do serviço 2/i)
+    await user.clear(progress)
+    await user.type(progress, '74')
+    await user.click(screen.getByRole('button', { name: /publicar nova versão/i }))
+    expect(screen.getByText(/publicado como versão 2/i)).toBeInTheDocument()
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')
+    expect(saved.schedule.publications).toHaveLength(2)
+    expect(saved.schedule.publications[0].services[1].progress).toBe(62)
+    expect(saved.schedule.publications[1].services[1].progress).toBe(74)
   })
 
   it('gera um rascunho rastreável a partir das evidências simuladas', async () => {
@@ -185,5 +240,25 @@ describe('Arquitetool Campo', () => {
     const nav = screen.getByRole('navigation', { name: /navegação principal/i })
     await user.click(within(nav).getByRole('button', { name: /checklist/i }))
     expect(screen.getByText('Checklist legado')).toBeInTheDocument()
+  })
+
+  it('migra os dados locais da versão 3 e acrescenta o Cronograma sem perder Diários', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      version: 3,
+      onlineSimulation: true,
+      diaries: [{ id: 'diary-v3', date: '2026-08-01', weekLabel: '01 – 07 ago.', weeklyServices: 'Registro preservado da versão 3', generalLog: '', occurrences: '', alignments: '', photos: [], purchaseIds: [], status: 'published', createdBy: 'Equipe', createdAt: '2026-08-01T12:00:00.000Z' }],
+      purchases: [],
+      aiEvidence: [],
+      checklistTemplates: [],
+      checklists: [],
+    }))
+    const user = userEvent.setup()
+    render(<App />)
+    await loginAs('Cliente')
+    const nav = screen.getByRole('navigation', { name: /navegação principal/i })
+    await user.click(within(nav).getByRole('button', { name: /cronograma/i }))
+    expect(screen.getByRole('heading', { name: /cronograma da obra/i })).toBeInTheDocument()
+    await user.click(within(nav).getByRole('button', { name: /diários/i }))
+    expect(screen.getByText('Registro preservado da versão 3')).toBeInTheDocument()
   })
 })

@@ -1,4 +1,4 @@
-import type { AppData, Checklist, ChecklistItem, ChecklistPublication, DemoUser, MaterialDefinition } from './types'
+import type { AppData, Checklist, ChecklistItem, ChecklistPublication, DemoUser, MaterialDefinition, ScheduleService } from './types'
 
 export const STORAGE_KEY = 'arquitetool-campo-demo-v2'
 export const SESSION_KEY = 'arquitetool-campo-session-v1'
@@ -87,9 +87,30 @@ function createPublication(checklist: Checklist, publishedAt: string, publishedB
 }
 
 export function createSeedData(): AppData {
+  const publishedScheduleServices: ScheduleService[] = [
+    { id: 'schedule-foundation', name: 'Fundação e estrutura', startDate: dateOnly(-18), endDate: dateOnly(-8), progress: 100 },
+    { id: 'schedule-masonry', name: 'Alvenaria do térreo', startDate: dateOnly(-7), endDate: dateOnly(4), progress: 62 },
+    { id: 'schedule-electrical', name: 'Infraestrutura elétrica', startDate: dateOnly(1), endDate: dateOnly(12), progress: 15 },
+    { id: 'schedule-coating', name: 'Revestimentos internos', startDate: dateOnly(10), endDate: dateOnly(23), progress: 0 },
+    { id: 'schedule-painting', name: 'Pintura e acabamentos', startDate: dateOnly(21), endDate: dateOnly(34), progress: 0 },
+  ]
   const data: AppData = {
-    version: 3,
+    version: 4,
     onlineSimulation: true,
+    schedule: {
+      status: 'review',
+      source: 'api_demo',
+      updatedAt: isoDaysFromNow(0),
+      updatedBy: 'Carlos Mendes',
+      services: publishedScheduleServices.map((service) => service.id === 'schedule-masonry' ? { ...service, progress: 70 } : service),
+      publications: [{
+        id: 'schedule-publication-1',
+        version: 1,
+        publishedAt: isoDaysFromNow(-2),
+        publishedBy: 'Marina Costa',
+        services: publishedScheduleServices,
+      }],
+    },
     aiEvidence: [
       {
         id: 'ai-photo-1',
@@ -304,12 +325,18 @@ function migrateV2(parsed: Record<string, unknown>): AppData {
   }
 }
 
+function migrateV3(parsed: Record<string, unknown>): AppData {
+  const seed = createSeedData()
+  return { ...seed, ...parsed, version: 4, schedule: seed.schedule } as AppData
+}
+
 export function loadData(): AppData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return createSeedData()
     const parsed = JSON.parse(raw) as AppData | Record<string, unknown>
-    if (parsed.version === 3) return parsed as AppData
+    if (parsed.version === 4) return parsed as AppData
+    if (parsed.version === 3) return migrateV3(parsed as Record<string, unknown>)
     if (parsed.version === 2) return migrateV2(parsed as Record<string, unknown>)
     return createSeedData()
   } catch {

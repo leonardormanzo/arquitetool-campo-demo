@@ -1,8 +1,8 @@
 # Arquitetool Campo — demonstração standalone
 
-Demonstração funcional e responsiva que reúne **Copiloto IA**, **Diário de
-Obra**, **Compras** e **Checklist** em uma única experiência. A identidade usa o
-logo fornecido e o laranja oficial extraído dele (`#B95B41`).
+Demonstração funcional e responsiva que reúne **Copiloto IA**, **Cronograma**,
+**Diário de Obra**, **Compras** e **Checklist** em uma única experiência. A
+identidade usa o logo fornecido e o laranja oficial extraído dele (`#B95B41`).
 
 O arquivo `index.html` é autocontido: CSS, JavaScript, fontes e logo estão
 incorporados e ele pode ser aberto diretamente por duplo clique, sem servidor e
@@ -12,9 +12,9 @@ sem conexão com a internet.
 
 | Perfil | E-mail | Senha | Permissões |
 | --- | --- | --- | --- |
-| Campo | `campo@demo.arquitetool` | `campo123` | Cria Diários e pedidos, executa correções e envia comprovações do Checklist |
-| Escritório | `escritorio@demo.arquitetool` | `escritorio123` | Cria modelos e vistorias, preenche, valida, publica e atualiza Compras |
-| Cliente | `cliente@demo.arquitetool` | `cliente123` | Vê somente Diários e versões de Checklist publicadas |
+| Campo | `campo@demo.arquitetool` | `campo123` | Ajusta o Cronograma e solicita aprovação, cria Diários e pedidos e executa correções do Checklist |
+| Escritório | `escritorio@demo.arquitetool` | `escritorio123` | Ajusta e publica o Cronograma, cria e valida vistorias, publica registros e atualiza Compras |
+| Cliente | `cliente@demo.arquitetool` | `cliente123` | Vê somente versões publicadas do Cronograma, dos Diários e do Checklist |
 
 Os acessos são fictícios e servem apenas para demonstrar visibilidade por
 perfil. Eles **não representam autenticação ou segurança real**.
@@ -57,15 +57,32 @@ modelo de IA.
 - O dashboard do Escritório reúne situação geral, avanços recentes, riscos,
   materiais em atenção e próximas ações.
 - O botão **Atualizar resumo** recalcula o conteúdo localmente usando Diário,
-  Compras, Checklist e evidências do Copiloto disponíveis neste aparelho.
+  Cronograma, Compras, Checklist e evidências do Copiloto disponíveis neste aparelho.
 - Os atalhos de fontes permitem abrir os módulos que sustentam a análise.
 - O Cliente recebe uma versão separada e filtrada, construída por uma lista
-  permitida que considera somente Diários e Checklists já publicados.
+  permitida que considera somente Cronograma, Diários e Checklists já publicados.
 - Compras, evidências brutas, justificativas internas, pendências de revisão e
   detalhes sensíveis nunca alimentam o resumo do Cliente.
 - A demonstração não chama um modelo externo; a futura integração deve preservar
   a separação entre resumo operacional e resumo público, com filtragem também no
   servidor.
+
+### Cronograma
+
+- Atalho disponível na barra inferior e nos cartões da tela inicial para Campo,
+  Escritório e Cliente.
+- Gráfico de Gantt com serviços no eixo Y, dias corridos no eixo X e alternância
+  visual entre Dias e Semanas.
+- Dados fictícios representam o contrato que futuramente poderá ser alimentado
+  pela API da Arquitetool; também é possível manter alimentação manual.
+- Campo e Escritório podem adicionar ou excluir serviços e ajustar nome, início,
+  término e percentual concluído.
+- O Campo envia o rascunho pela ação **Solicitar aprovação**. Somente o
+  Escritório publica uma nova versão.
+- Cada publicação cria um snapshot imutável. O histórico de versões é exclusivo
+  do Escritório e o Cliente vê somente a última versão publicada.
+- O resumo de situação é determinístico e local, rotulado como demonstração de
+  IA. Nenhum provedor foi escolhido ou conectado.
 
 ### Diário de Obra
 
@@ -146,6 +163,8 @@ Os tipos principais estão em `source/src/types.ts`:
 - `ChecklistTemplate`: modelo ativo reutilizável; sua edição não modifica os
   snapshots de vistorias já criadas.
 - `ChecklistPublication`: versão pública imutável e sanitizada da vistoria.
+- `Schedule` / `ScheduleService`: rascunho operacional, serviços, datas e avanço.
+- `SchedulePublication`: snapshot imutável liberado pelo Escritório ao Cliente.
 - `PhotoReference`: referência para a imagem mantida no banco local.
 
 Para integrar ao sistema real, substitua `storage.ts` por chamadas autenticadas
@@ -186,7 +205,7 @@ O fluxo de produção exigirá, no mínimo:
 ## Limites desta versão
 
 Esta entrega é uma **demonstração comercial funcional**, não um SaaS pronto para
-produção. Não há backend, banco compartilhado, autenticação real, recuperação
+produção. Não há backend, API da Arquitetool conectada, banco compartilhado, autenticação real, recuperação
 de senha, WhatsApp conectado, Google Meet conectado, modelo de IA, sincronização
 entre aparelhos, antivírus para arquivos, trilha de auditoria, assinatura
 digital ou notificações. O modo offline não transmite dados quando a conexão
