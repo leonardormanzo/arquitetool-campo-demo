@@ -1,4 +1,4 @@
-import type { AppData, DemoUser, MaterialDefinition } from './types'
+import type { AppData, Checklist, ChecklistItem, ChecklistPublication, DemoUser, MaterialDefinition } from './types'
 
 export const STORAGE_KEY = 'arquitetool-campo-demo-v2'
 export const SESSION_KEY = 'arquitetool-campo-session-v1'
@@ -60,9 +60,35 @@ export function isInCurrentWeek(value: string) {
   return weekLabelFor(date) === current
 }
 
-export function createSeedData(): AppData {
+function createPublication(checklist: Checklist, publishedAt: string, publishedBy = 'Marina Costa'): ChecklistPublication {
   return {
-    version: 2,
+    id: `publication-${checklist.id}-${checklist.publications.length + 1}`,
+    version: checklist.publications.length + 1,
+    publishedAt,
+    publishedBy,
+    isPartial: checklist.items.some((item) => item.answer === 'pending' || item.answer === 'not_verified' || (item.answer === 'nonconform' && item.nonConformityStatus !== 'resolved')),
+    title: checklist.title,
+    environment: checklist.environment,
+    inspector: checklist.inspector,
+    generalNotes: checklist.generalNotes,
+    items: checklist.items.map((item) => ({
+      id: item.id,
+      description: item.description,
+      answer: item.answer,
+      publicNote: item.publicNote,
+      assignee: item.assignee,
+      dueDate: item.dueDate,
+      nonConformityStatus: item.nonConformityStatus,
+      beforePhoto: item.beforePhoto,
+      afterPhoto: item.nonConformityStatus === 'resolved' ? item.afterPhoto : undefined,
+      correctionDescription: item.nonConformityStatus === 'resolved' ? item.correctionDescription : undefined,
+    })),
+  }
+}
+
+export function createSeedData(): AppData {
+  const data: AppData = {
+    version: 3,
     onlineSimulation: true,
     aiEvidence: [
       {
@@ -182,30 +208,99 @@ export function createSeedData(): AppData {
         createdAt: isoDaysFromNow(-1),
       },
     ],
+    checklistTemplates: [
+      {
+        id: 'template-entrega-apartamento',
+        title: 'Vistoria de acabamento',
+        category: 'Qualidade e entrega',
+        environment: 'Apartamento',
+        updatedAt: isoDaysFromNow(-10),
+        items: [
+          { id: 'ti-1', description: 'Conferir acabamento de pintura e ausência de manchas' },
+          { id: 'ti-2', description: 'Conferir alinhamento de tomadas e espelhos' },
+          { id: 'ti-3', description: 'Verificar assentamento e rejunte dos revestimentos' },
+          { id: 'ti-4', description: 'Testar abertura e fechamento das esquadrias' },
+        ],
+      },
+    ],
     checklists: [
       {
         id: 'checklist-seed-1',
         title: 'Vistoria do apartamento modelo',
         environment: 'Unidade 101',
         status: 'published',
-        createdBy: 'Carlos Mendes',
+        inspector: 'Marina Costa',
+        generalNotes: 'Vistoria parcial de acabamento para acompanhamento do cliente.',
+        templateId: 'template-entrega-apartamento',
+        createdBy: 'Marina Costa',
         createdAt: isoDaysFromNow(-8),
         publishedAt: isoDaysFromNow(-5),
         items: [
-          { id: 'ci-1', description: 'Regularizar acabamento junto ao rodapé da sala', completed: true },
-          { id: 'ci-2', description: 'Ajustar alinhamento da tomada da bancada', completed: true },
+          { id: 'ci-1', description: 'Conferir acabamento de pintura e ausência de manchas', answer: 'conform', publicNote: 'Acabamento conferido.', internalNote: '', assignee: '', dueDate: '' },
+          { id: 'ci-2', description: 'Conferir alinhamento de tomadas e espelhos', answer: 'nonconform', publicNote: 'Tomada da bancada requer realinhamento.', internalNote: 'Conferir compatibilização antes de fechar o espelho.', assignee: 'Equipe elétrica', dueDate: dateOnly(3), nonConformityStatus: 'open', beforePhoto: { id: 'demo-photo-electrical', name: 'registro-eletrica-ficticio.jpg', type: 'image/jpeg', createdAt: isoDaysFromNow(-6), demoAsset: 'electrical' } },
+          { id: 'ci-3', description: 'Verificar assentamento e rejunte dos revestimentos', answer: 'not_verified', publicNote: 'Item programado para a próxima vistoria.', internalNote: '', assignee: '', dueDate: '' },
         ],
+        publications: [],
       },
       {
         id: 'checklist-seed-2',
         title: 'Conferência de alvenaria',
         environment: 'Pavimento térreo',
-        status: 'review',
-        createdBy: 'Carlos Mendes',
+        inspector: 'Marina Costa',
+        generalNotes: 'Conferência geométrica e liberação das frentes.',
+        status: 'in_progress',
+        createdBy: 'Marina Costa',
         createdAt: isoDaysFromNow(-1),
-        items: [{ id: 'ci-3', description: 'Conferir prumo da parede do lavabo', completed: true }],
+        items: [{ id: 'ci-4', description: 'Conferir prumo da parede do lavabo', answer: 'nonconform', publicNote: 'Parede do lavabo requer correção localizada.', internalNote: 'Desvio identificado na conferência com régua.', assignee: 'Equipe de alvenaria', dueDate: dateOnly(2), nonConformityStatus: 'awaiting_validation', beforePhoto: { id: 'demo-photo-masonry', name: 'registro-alvenaria-ficticio.jpg', type: 'image/jpeg', createdAt: isoDaysFromNow(-1), demoAsset: 'masonry' }, afterPhoto: { id: 'demo-photo-masonry-after', name: 'correcao-alvenaria-ficticia.jpg', type: 'image/jpeg', createdAt: isoDaysFromNow(0), demoAsset: 'masonry' }, correctionDescription: 'Regularização executada e conferida pela equipe de campo.' }],
+        publications: [],
       },
     ],
+  }
+  const published = data.checklists.find((item) => item.status === 'published')
+  if (published?.publishedAt) published.publications = [createPublication(published, published.publishedAt)]
+  return data
+}
+
+function migrateV2(parsed: Record<string, unknown>): AppData {
+  const seed = createSeedData()
+  const legacyChecklists = Array.isArray(parsed.checklists) ? parsed.checklists as Array<Record<string, unknown>> : []
+  const checklists: Checklist[] = legacyChecklists.map((legacy, checklistIndex) => {
+    const createdAt = String(legacy.createdAt ?? new Date().toISOString())
+    const legacyItems = Array.isArray(legacy.items) ? legacy.items as Array<Record<string, unknown>> : []
+    const items: ChecklistItem[] = legacyItems.map((item, itemIndex) => ({
+      id: String(item.id ?? `migrated-item-${checklistIndex}-${itemIndex}`),
+      description: String(item.description ?? 'Item migrado'),
+      answer: item.completed ? 'conform' : 'not_verified',
+      publicNote: item.completed ? 'Item concluído na versão anterior.' : 'Item ainda não verificado.',
+      internalNote: '',
+      assignee: '',
+      dueDate: '',
+      beforePhoto: item.beforePhoto as ChecklistItem['beforePhoto'],
+      afterPhoto: item.afterPhoto as ChecklistItem['afterPhoto'],
+    }))
+    const checklist: Checklist = {
+      id: String(legacy.id ?? `migrated-checklist-${checklistIndex}`),
+      title: String(legacy.title ?? 'Checklist migrado'),
+      environment: String(legacy.environment ?? 'Ambiente não informado'),
+      inspector: String(legacy.createdBy ?? 'Equipe'),
+      generalNotes: 'Registro migrado da demonstração anterior.',
+      items,
+      status: legacy.status === 'published' ? 'published' : 'in_progress',
+      createdBy: String(legacy.createdBy ?? 'Equipe'),
+      createdAt,
+      publishedAt: legacy.publishedAt ? String(legacy.publishedAt) : undefined,
+      publications: [],
+    }
+    if (checklist.publishedAt) checklist.publications = [createPublication(checklist, checklist.publishedAt, 'Escritório')]
+    return checklist
+  })
+  return {
+    ...seed,
+    diaries: Array.isArray(parsed.diaries) ? parsed.diaries as AppData['diaries'] : seed.diaries,
+    purchases: Array.isArray(parsed.purchases) ? parsed.purchases as AppData['purchases'] : seed.purchases,
+    aiEvidence: Array.isArray(parsed.aiEvidence) ? parsed.aiEvidence as AppData['aiEvidence'] : seed.aiEvidence,
+    onlineSimulation: typeof parsed.onlineSimulation === 'boolean' ? parsed.onlineSimulation : true,
+    checklists,
   }
 }
 
@@ -213,8 +308,10 @@ export function loadData(): AppData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return createSeedData()
-    const parsed = JSON.parse(raw) as AppData
-    return parsed.version === 2 ? parsed : createSeedData()
+    const parsed = JSON.parse(raw) as AppData | Record<string, unknown>
+    if (parsed.version === 3) return parsed as AppData
+    if (parsed.version === 2) return migrateV2(parsed as Record<string, unknown>)
+    return createSeedData()
   } catch {
     return createSeedData()
   }

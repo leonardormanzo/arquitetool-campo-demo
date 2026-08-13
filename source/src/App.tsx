@@ -56,8 +56,11 @@ import type {
   AIEvidenceSource,
   AppData,
   Checklist,
+  ChecklistAnswer,
   ChecklistItem,
+  ChecklistPublication,
   ChecklistStatus,
+  ChecklistTemplate,
   DemoPhotoAsset,
   DemoUser,
   DiaryEntry,
@@ -79,6 +82,7 @@ type Screen =
   | 'purchase-new'
   | 'purchase-detail'
   | 'checklists'
+  | 'checklist-templates'
   | 'checklist-new'
   | 'checklist-detail'
   | 'ai-inbox'
@@ -87,7 +91,9 @@ const PROJECT = { name: 'Residencial Aurora', code: 'DEMO-2026-001', location: '
 
 const roleLabel: Record<Role, string> = { field: 'Campo', office: 'Escritório', client: 'Cliente' }
 const diaryLabel: Record<DiaryStatus, string> = { draft: 'Rascunho', review: 'Em revisão', published: 'Publicado' }
-const checklistLabel: Record<ChecklistStatus, string> = { in_progress: 'Em andamento', review: 'Em revisão', published: 'Publicado' }
+const checklistLabel: Record<ChecklistStatus, string> = { in_progress: 'Em andamento', published: 'Publicado' }
+const checklistAnswerLabel: Record<ChecklistAnswer, string> = { pending: 'Sem resposta', conform: 'Conforme', nonconform: 'Não conforme', not_applicable: 'Não se aplica', not_verified: 'Não verificado' }
+const nonConformityLabel = { open: 'Aberta', in_correction: 'Em correção', awaiting_validation: 'Aguardando validação', resolved: 'Resolvida', reopened: 'Reaberta' } as const
 const purchaseLabel: Record<PurchaseStatus, string> = {
   solicitado: 'Solicitado',
   em_aprovacao: 'Em aprovação',
@@ -355,14 +361,14 @@ function LoginScreen({ onLogin }: { onLogin: (user: DemoUser) => void }) {
 function Dashboard({ user, data, navigate }: { user: DemoUser; data: AppData; navigate: (screen: Screen) => void }) {
   const todayDiary = data.diaries.some((diary) => diary.date === today())
   const weekOrder = data.purchases.some((order) => isInCurrentWeek(order.createdAt))
-  const activeChecklist = data.checklists.some((checklist) => checklist.status !== 'published')
+  const activeChecklist = data.checklists.some((checklist) => checklist.items.some((item) => item.answer === 'nonconform' && item.nonConformityStatus !== 'resolved'))
   const fieldProgress = [todayDiary, weekOrder, activeChecklist].filter(Boolean).length
   const reviewDiaries = data.diaries.filter((diary) => diary.status === 'review').length
-  const reviewChecklists = data.checklists.filter((checklist) => checklist.status === 'review').length
+  const reviewChecklists = data.checklists.filter((checklist) => checklist.items.some((item) => item.nonConformityStatus === 'awaiting_validation')).length
   const approvalOrders = data.purchases.filter((order) => ['solicitado', 'em_aprovacao'].includes(order.status)).length
   const newAiEvidence = data.aiEvidence.filter((item) => item.status === 'new').length
   const publishedDiaries = data.diaries.filter((diary) => diary.status === 'published')
-  const publishedChecklists = data.checklists.filter((checklist) => checklist.status === 'published')
+  const publishedChecklists = data.checklists.filter((checklist) => checklist.publications.length > 0)
 
   if (user.role === 'client') {
     return (
@@ -433,7 +439,7 @@ interface SummaryCopy {
 function buildOfficeSummary(data: AppData): SummaryCopy {
   const latestDiary = data.diaries[0]
   const reviewDiaries = data.diaries.filter((item) => item.status === 'review')
-  const reviewChecklists = data.checklists.filter((item) => item.status === 'review')
+  const reviewChecklists = data.checklists.filter((checklist) => checklist.items.some((item) => item.nonConformityStatus === 'awaiting_validation'))
   const materialOrders = data.purchases.filter((item) => !['entregue', 'cancelado'].includes(item.status))
   const urgentOrders = materialOrders.filter((item) => item.urgency === 'urgente')
   const newEvidence = data.aiEvidence.filter((item) => item.status === 'new')
@@ -447,8 +453,8 @@ function buildOfficeSummary(data: AppData): SummaryCopy {
       ? latestDiary.weeklyServices
       : 'Ainda não há um Diário de Obra disponível para identificar os avanços recentes.',
     attention: reviewDiaries.length || reviewChecklists.length
-      ? `${reviewDiaries.length} diário${reviewDiaries.length === 1 ? '' : 's'} e ${reviewChecklists.length} checklist${reviewChecklists.length === 1 ? '' : 's'} aguardam revisão antes de qualquer publicação.`
-      : 'Não há Diários ou Checklists aguardando revisão.',
+      ? `${reviewDiaries.length} diário${reviewDiaries.length === 1 ? '' : 's'} e ${reviewChecklists.length} checklist${reviewChecklists.length === 1 ? '' : 's'} exigem revisão ou validação.`
+      : 'Não há Diários ou correções de Checklist aguardando validação.',
     materials: materialOrders.length
       ? `${materialOrders.length} pedido${materialOrders.length === 1 ? '' : 's'} em aberto${urgentOrders.length ? `, sendo ${urgentOrders.length} urgente${urgentOrders.length === 1 ? '' : 's'}` : ''}. Conferir prazo e continuidade das frentes.`
       : 'Não há pedidos de material em aberto.',
@@ -463,19 +469,20 @@ function buildOfficeSummary(data: AppData): SummaryCopy {
 function buildClientSummary(data: AppData): SummaryCopy {
   // Allowlist: somente dados já publicados alimentam a versão do Cliente.
   const publishedDiaries = data.diaries.filter((item) => item.status === 'published')
-  const publishedChecklists = data.checklists.filter((item) => item.status === 'published')
+  const publishedChecklists = data.checklists.filter((item) => item.publications.length > 0)
   const latestDiary = publishedDiaries[0]
   const latestChecklist = publishedChecklists[0]
-  const completedItems = latestChecklist?.items.filter((item) => item.completed).length ?? 0
-  const totalItems = latestChecklist?.items.length ?? 0
+  const latestPublication = latestChecklist?.publications.at(-1)
+  const completedItems = latestPublication?.items.filter((item) => item.answer === 'conform' || item.nonConformityStatus === 'resolved').length ?? 0
+  const totalItems = latestPublication?.items.length ?? 0
 
   return {
     overview: publishedDiaries.length || publishedChecklists.length
       ? 'A obra possui atualizações revisadas pelo escritório e disponíveis para acompanhamento.'
       : 'O escritório ainda não publicou uma atualização da obra.',
     advances: latestDiary?.weeklyServices ?? 'Os próximos avanços aparecerão após revisão e publicação pelo escritório.',
-    attention: latestChecklist
-      ? `${latestChecklist.title}: ${completedItems} de ${totalItems} item${totalItems === 1 ? '' : 's'} registrado${totalItems === 1 ? '' : 's'} como concluído${totalItems === 1 ? '' : 's'}.`
+    attention: latestPublication
+      ? `${latestPublication.title}: ${completedItems} de ${totalItems} item${totalItems === 1 ? '' : 's'} conforme${totalItems === 1 ? '' : 's'} ou resolvido${totalItems === 1 ? '' : 's'}.`
       : 'Ainda não há checklist publicado para esta obra.',
     materials: 'Informações operacionais e solicitações internas são protegidas e não fazem parte desta versão.',
     nextActions: 'Novos registros serão apresentados aqui somente depois da revisão e publicação pelo escritório.',
@@ -799,32 +806,72 @@ function PurchaseDetail({ order, back }: { order: PurchaseOrder; back: () => voi
   )
 }
 
+function checklistProgress(items: Array<Pick<ChecklistItem, 'answer' | 'nonConformityStatus'>>) {
+  if (!items.length) return 0
+  const complete = items.filter((item) => item.answer === 'conform' || item.answer === 'not_applicable' || (item.answer === 'nonconform' && item.nonConformityStatus === 'resolved')).length
+  return Math.round((complete / items.length) * 100)
+}
+
+function blankChecklistItem(description: string): ChecklistItem {
+  return { id: uid('check-item'), description, answer: 'pending', publicNote: '', internalNote: '', assignee: '', dueDate: '' }
+}
+
 function ChecklistList({ user, data, navigate, openChecklist }: { user: DemoUser; data: AppData; navigate: (screen: Screen) => void; openChecklist: (id: string) => void }) {
-  const checklists = user.role === 'client' ? data.checklists.filter((item) => item.status === 'published') : data.checklists
+  const checklists = user.role === 'client'
+    ? data.checklists.filter((item) => item.publications.length > 0)
+    : user.role === 'field'
+      ? data.checklists.filter((item) => item.items.some((entry) => entry.answer === 'nonconform' && entry.nonConformityStatus !== 'resolved'))
+      : data.checklists
   return (
     <div className="page">
-      <PageTitle icon={<ClipboardCheck size={24} />} title="Checklist" subtitle={user.role === 'client' ? 'Vistorias publicadas da obra' : 'Pendências, fotos e comprovações'} />
-      {user.role === 'field' && <button className="button primary wide main-cta" onClick={() => navigate('checklist-new')}><Plus size={20} /> Criar checklist</button>}
+      <PageTitle icon={<ClipboardCheck size={24} />} title="Checklist" subtitle={user.role === 'client' ? 'Vistorias publicadas da obra' : user.role === 'office' ? 'Modelos, vistorias e validações' : 'Pendências atribuídas ao campo'} />
+      {user.role === 'office' && <div className="checklist-primary-actions"><button className="button secondary" onClick={() => navigate('checklist-templates')}><ListChecks size={19} /> Gerenciar modelos</button><button className="button primary" onClick={() => navigate('checklist-new')}><Plus size={19} /> Nova vistoria</button></div>}
       <div className="record-list">
         {checklists.map((checklist) => {
-          const complete = checklist.items.filter((item) => item.completed).length
-          const progress = checklist.items.length ? Math.round((complete / checklist.items.length) * 100) : 0
-          return <button className="checklist-card" key={checklist.id} onClick={() => openChecklist(checklist.id)}><span className="checklist-progress" style={{ '--progress': `${progress}%` } as React.CSSProperties}><strong>{progress}%</strong></span><span className="record-main"><strong>{checklist.title}</strong><small>{checklist.environment} · {complete}/{checklist.items.length} concluídos</small><i><b style={{ width: `${progress}%` }} /></i></span><StatusBadge status={checklist.status}>{checklistLabel[checklist.status]}</StatusBadge><ChevronRight size={20} /></button>
+          const publication = user.role === 'client' ? checklist.publications.at(-1) : undefined
+          const sourceItems = publication?.items ?? checklist.items
+          const progress = checklistProgress(sourceItems)
+          const openIssues = sourceItems.filter((item) => item.answer === 'nonconform' && item.nonConformityStatus !== 'resolved').length
+          return <button className="checklist-card" key={checklist.id} onClick={() => openChecklist(checklist.id)}><span className="checklist-progress" style={{ '--progress': `${progress}%` } as React.CSSProperties}><strong>{progress}%</strong></span><span className="record-main"><strong>{publication?.title ?? checklist.title}</strong><small>{publication?.environment ?? checklist.environment} · {openIssues} não conformidade(s) aberta(s)</small><i><b style={{ width: `${progress}%` }} /></i></span><StatusBadge status={publication?.isPartial ? 'warning' : checklist.status}>{publication ? `Versão ${publication.version}` : checklistLabel[checklist.status]}</StatusBadge><ChevronRight size={20} /></button>
         })}
-        {checklists.length === 0 && <EmptyState icon={<ClipboardCheck size={30} />} title="Nenhum checklist disponível" text="Os checklists publicados aparecerão aqui." />}
+        {checklists.length === 0 && <EmptyState icon={<ClipboardCheck size={30} />} title="Nenhum checklist disponível" text={user.role === 'field' ? 'Nenhuma pendência está aguardando ação do campo.' : 'As vistorias publicadas aparecerão aqui.'} />}
       </div>
     </div>
   )
 }
 
-function ChecklistNew({ user, onCreate, back, notify }: { user: DemoUser; onCreate: (checklist: Checklist) => void; back: () => void; notify: (text: string) => void }) {
+function ChecklistTemplateManager({ templates, back, save, notify }: { templates: ChecklistTemplate[]; back: () => void; save: (template: ChecklistTemplate) => void; notify: (text: string) => void }) {
+  const first = templates[0]
+  const [templateId, setTemplateId] = useState(first?.id ?? '')
+  const [title, setTitle] = useState(first?.title ?? '')
+  const [category, setCategory] = useState(first?.category ?? '')
+  const [environment, setEnvironment] = useState(first?.environment ?? '')
+  const [items, setItems] = useState(first?.items ?? [])
+  const [newItem, setNewItem] = useState('')
+  const load = (id: string) => {
+    const template = templates.find((item) => item.id === id)
+    setTemplateId(template?.id ?? ''); setTitle(template?.title ?? ''); setCategory(template?.category ?? ''); setEnvironment(template?.environment ?? ''); setItems(template?.items ?? [])
+  }
+  const add = () => { if (!newItem.trim()) return; setItems((current) => [...current, { id: uid('template-item'), description: newItem.trim() }]); setNewItem('') }
+  const submit = () => {
+    if (!title.trim() || !category.trim() || !environment.trim() || !items.length) return notify('Informe título, categoria, ambiente e pelo menos um item.')
+    save({ id: templateId || uid('template'), title: title.trim(), category: category.trim(), environment: environment.trim(), items, updatedAt: new Date().toISOString() })
+  }
+  return <div className="page narrow-page"><PageTitle icon={<ListChecks size={24} />} title="Modelos de checklist" subtitle="A edição sobrescreve o modelo ativo, sem alterar vistorias antigas" back={back} /><section className="form-section plain"><label className="field"><span>Modelo ativo</span><select value={templateId} onChange={(event) => load(event.target.value)}><option value="">Criar novo modelo</option>{templates.map((template) => <option value={template.id} key={template.id}>{template.title}</option>)}</select></label><div className="template-grid"><label className="field"><span>Nome *</span><input value={title} onChange={(event) => setTitle(event.target.value)} /></label><label className="field"><span>Categoria *</span><input value={category} onChange={(event) => setCategory(event.target.value)} /></label></div><label className="field"><span>Ambiente padrão *</span><input value={environment} onChange={(event) => setEnvironment(event.target.value)} /></label><div className="template-items"><strong>Itens do modelo</strong>{items.map((item, index) => <div key={item.id}><span>{index + 1}</span><input aria-label={`Item ${index + 1} do modelo`} value={item.description} onChange={(event) => setItems((current) => current.map((candidate) => candidate.id === item.id ? { ...candidate, description: event.target.value } : candidate))} /><button className="icon-button small" aria-label={`Excluir item ${index + 1}`} onClick={() => setItems((current) => current.filter((candidate) => candidate.id !== item.id))}><Trash2 size={16} /></button></div>)}<div><span>+</span><input value={newItem} onChange={(event) => setNewItem(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && add()} placeholder="Novo item de verificação" /><button className="button small secondary" onClick={add}>Adicionar</button></div></div><button className="button primary wide" onClick={submit}><Check size={18} /> Salvar modelo ativo</button></section></div>
+}
+
+function ChecklistNew({ user, templates, onCreate, back, notify }: { user: DemoUser; templates: ChecklistTemplate[]; onCreate: (checklist: Checklist) => void; back: () => void; notify: (text: string) => void }) {
+  const [templateId, setTemplateId] = useState('')
   const [title, setTitle] = useState('')
   const [environment, setEnvironment] = useState('')
+  const [notes, setNotes] = useState('')
+  const chooseTemplate = (id: string) => { const template = templates.find((item) => item.id === id); setTemplateId(id); if (template) { setTitle(template.title); setEnvironment(template.environment) } }
   const create = () => {
-    if (!title.trim() || !environment.trim()) return notify('Informe o nome e o ambiente do checklist.')
-    onCreate({ id: uid('checklist'), title: title.trim(), environment: environment.trim(), items: [], status: 'in_progress', createdBy: user.name, createdAt: new Date().toISOString() })
+    if (!title.trim() || !environment.trim()) return notify('Informe o nome e o ambiente da vistoria.')
+    const template = templates.find((item) => item.id === templateId)
+    onCreate({ id: uid('checklist'), title: title.trim(), environment: environment.trim(), inspector: user.name, generalNotes: notes.trim(), templateId: template?.id, items: template?.items.map((item) => blankChecklistItem(item.description)) ?? [], status: 'in_progress', createdBy: user.name, createdAt: new Date().toISOString(), publications: [] })
   }
-  return <div className="page narrow-page"><PageTitle icon={<ClipboardCheck size={24} />} title="Novo checklist" subtitle="Comece pela área que será vistoriada" back={back} /><section className="form-section plain"><label className="field"><span>Nome do checklist *</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Vistoria de entrega" autoFocus /></label><label className="field"><span>Obra ou ambiente *</span><input value={environment} onChange={(event) => setEnvironment(event.target.value)} placeholder="Ex.: Unidade 203, pavimento térreo" /></label><div className="creation-preview"><ListChecks size={28} /><div><strong>Fluxo antes e depois</strong><p>Adicione as pendências, fotografe como foram encontradas e registre a solução.</p></div></div><button className="button primary wide" onClick={create}>Criar e adicionar itens <ChevronRight size={19} /></button></section></div>
+  return <div className="page narrow-page"><PageTitle icon={<ClipboardCheck size={24} />} title="Nova vistoria" subtitle="Preenchimento e publicação sob responsabilidade do escritório" back={back} /><section className="form-section plain"><label className="field"><span>Usar modelo</span><select value={templateId} onChange={(event) => chooseTemplate(event.target.value)}><option value="">Vistoria sem modelo</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.title}</option>)}</select></label><label className="field"><span>Nome da vistoria *</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Vistoria de entrega" /></label><label className="field"><span>Ambiente *</span><input value={environment} onChange={(event) => setEnvironment(event.target.value)} placeholder="Ex.: Unidade 203" /></label><label className="field"><span>Observação geral pública</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} /></label><div className="creation-preview"><ListChecks size={28} /><div><strong>Snapshot independente</strong><p>A vistoria copiará os itens atuais do modelo. Edições futuras no modelo não alterarão este registro.</p></div></div><button className="button primary wide" onClick={create}>Criar e preencher vistoria <ChevronRight size={19} /></button></section></div>
 }
 
 function SinglePhotoInput({ label, photo, disabled, onPhoto, onRemove, notify }: { label: string; photo?: PhotoReference; disabled?: boolean; onPhoto: (photo: PhotoReference) => void; onRemove: () => void; notify: (text: string) => void }) {
@@ -834,66 +881,34 @@ function SinglePhotoInput({ label, photo, disabled, onPhoto, onRemove, notify }:
     try { onPhoto(await savePhoto(file)); notify(`${label} adicionada.`) } catch (error) { notify(error instanceof Error ? error.message : 'Não foi possível salvar a foto.') }
     event.target.value = ''
   }
-  if (photo) return <PhotoPreview photo={photo} label={label} onRemove={onRemove} />
+  if (photo) return <PhotoPreview photo={photo} label={label} onRemove={disabled ? undefined : onRemove} />
   return <label className={disabled ? 'photo-add compact disabled' : 'photo-add compact'}><Camera size={24} /><strong>{label}</strong><span>{disabled ? 'Conclua o item primeiro' : 'Abrir câmera'}</span><input disabled={disabled} type="file" accept="image/*" capture="environment" onChange={change} /></label>
+}
+
+function PublishedChecklist({ publication, back, notify }: { publication: ChecklistPublication; back: () => void; notify: (text: string) => void }) {
+  const progress = checklistProgress(publication.items)
+  const summaryText = `${publication.title}\n${PROJECT.name} — ${publication.environment}\nVersão ${publication.version} · ${publication.isPartial ? 'Publicação parcial' : 'Concluído'}\n\n${publication.items.map((item, index) => `${index + 1}. ${item.description} — ${checklistAnswerLabel[item.answer]}`).join('\n')}`
+  const share = async () => { if (navigator.share) { try { await navigator.share({ title: `Checklist — ${publication.title}`, text: summaryText }); notify('Resumo compartilhado.') } catch { notify('Compartilhamento cancelado.') } } else { const blob = new Blob([summaryText], { type: 'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `checklist-versao-${publication.version}.txt`; anchor.click(); URL.revokeObjectURL(url); notify('Resumo baixado como arquivo de texto.') } }
+  return <div className="page narrow-page printable"><PageTitle icon={<ClipboardCheck size={24} />} title={publication.title} subtitle={`${publication.environment} · Versão ${publication.version}`} back={back} /><div className="published-note"><CheckCircle2 size={19} /> Publicado pelo escritório em {formatDate(publication.publishedAt)}. {publication.isPartial && 'Esta é uma publicação parcial com itens em acompanhamento.'}</div><div className="checklist-hero"><div className="progress-ring"><strong>{progress}%</strong><small>qualidade</small></div><div><StatusBadge status={publication.isPartial ? 'warning' : 'published'}>{publication.isPartial ? 'Parcial' : 'Concluído'}</StatusBadge><p>Vistoria de {publication.inspector}</p><div className="progress-line"><i style={{ width: `${progress}%` }} /></div></div></div>{publication.generalNotes && <section className="detail-section"><h2>Observação geral</h2><p>{publication.generalNotes}</p></section>}<div className="check-items">{publication.items.map((item, index) => <article className={`check-item answer-${item.answer}`} key={item.id}><div className="check-item-header"><span className="check-index">{index + 1}</span><div><strong>{item.description}</strong><small>{checklistAnswerLabel[item.answer]}</small></div><StatusBadge status={item.answer}>{checklistAnswerLabel[item.answer]}</StatusBadge></div>{item.publicNote && <p className="public-note">{item.publicNote}</p>}{item.answer === 'nonconform' && <div className="nonconform-public"><div><strong>Responsável</strong><span>{item.assignee}</span></div><div><strong>Prazo</strong><span>{item.dueDate ? formatDate(item.dueDate) : 'Não informado'}</span></div><div><strong>Situação</strong><span>{item.nonConformityStatus ? nonConformityLabel[item.nonConformityStatus] : 'Aberta'}</span></div></div>}{(item.beforePhoto || item.afterPhoto) && <div className="before-after">{item.beforePhoto && <div><span>Antes</span><PhotoPreview photo={item.beforePhoto} label={`Foto antes do item ${index + 1}`} /></div>}{item.afterPhoto && <div><span>Depois aprovado</span><PhotoPreview photo={item.afterPhoto} label={`Foto depois do item ${index + 1}`} /></div>}</div>}{item.correctionDescription && <p className="correction-note"><strong>Correção validada:</strong> {item.correctionDescription}</p>}</article>)}</div><div className="share-actions"><button className="button primary" onClick={share}><Share2 size={18} /> Compartilhar</button><button className="button secondary" onClick={() => window.print()}><Printer size={18} /> Imprimir</button><button className="button ghost" onClick={share}><Download size={18} /> Baixar</button></div></div>
 }
 
 function ChecklistDetail({ checklist, user, back, update, publish, notify }: { checklist: Checklist; user: DemoUser; back: () => void; update: (checklist: Checklist) => void; publish: () => void; notify: (text: string) => void }) {
   const [description, setDescription] = useState('')
-  const editable = user.role === 'field' && checklist.status === 'in_progress'
-  const complete = checklist.items.filter((item) => item.completed).length
-  const progress = checklist.items.length ? Math.round((complete / checklist.items.length) * 100) : 0
-  const ready = checklist.items.length > 0 && checklist.items.every((item) => item.completed && item.beforePhoto && item.afterPhoto)
-
+  const publication = checklist.publications.at(-1)
+  if (user.role === 'client' && publication) return <PublishedChecklist publication={publication} back={back} notify={notify} />
+  const progress = checklistProgress(checklist.items)
   const updateItem = (id: string, patch: Partial<ChecklistItem>) => update({ ...checklist, items: checklist.items.map((item) => item.id === id ? { ...item, ...patch } : item) })
-  const removeItem = async (item: ChecklistItem) => {
-    if (item.beforePhoto) await deletePhoto(item.beforePhoto.id)
-    if (item.afterPhoto) await deletePhoto(item.afterPhoto.id)
-    update({ ...checklist, items: checklist.items.filter((candidate) => candidate.id !== item.id) })
+  const changeAnswer = (item: ChecklistItem, answer: ChecklistAnswer) => updateItem(item.id, { answer, nonConformityStatus: answer === 'nonconform' ? item.nonConformityStatus ?? 'open' : undefined, assignee: answer === 'nonconform' ? item.assignee : '', dueDate: answer === 'nonconform' ? item.dueDate : '' })
+  const addItem = () => { if (!description.trim()) return notify('Descreva o item antes de adicionar.'); update({ ...checklist, items: [...checklist.items, blankChecklistItem(description.trim())] }); setDescription('') }
+  const removeItem = async (item: ChecklistItem) => { if (item.beforePhoto && !item.beforePhoto.demoAsset) await deletePhoto(item.beforePhoto.id); if (item.afterPhoto && !item.afterPhoto.demoAsset) await deletePhoto(item.afterPhoto.id); update({ ...checklist, items: checklist.items.filter((candidate) => candidate.id !== item.id) }) }
+  const requestValidation = (item: ChecklistItem) => { if (!item.afterPhoto || !item.correctionDescription?.trim()) return notify('Adicione a foto depois e descreva a correção.'); updateItem(item.id, { nonConformityStatus: 'awaiting_validation' }); notify('Correção enviada para validação do escritório.') }
+  const validatePublication = () => {
+    if (!checklist.items.length || checklist.items.some((item) => item.answer === 'pending')) return notify('Responda todos os itens antes de publicar. Use “Não verificado” quando necessário.')
+    const incomplete = checklist.items.find((item) => item.answer === 'nonconform' && (!item.beforePhoto || !item.publicNote.trim() || !item.assignee.trim() || !item.dueDate))
+    if (incomplete) return notify('Toda não conformidade precisa de foto antes, observação pública, responsável e prazo.')
+    publish()
   }
-  const addItem = () => {
-    if (!description.trim()) return notify('Descreva a pendência antes de adicionar.')
-    update({ ...checklist, items: [...checklist.items, { id: uid('check-item'), description: description.trim(), completed: false }] })
-    setDescription('')
-  }
-  const sendReview = () => {
-    if (!ready) return notify('Cada item precisa estar concluído e ter fotos de antes e depois.')
-    update({ ...checklist, status: 'review' })
-    notify('Checklist enviado para revisão.')
-  }
-  const summaryText = `${checklist.title}\n${PROJECT.name} — ${checklist.environment}\n${complete}/${checklist.items.length} itens concluídos\n\n${checklist.items.map((item, index) => `${index + 1}. ${item.description} — ${item.completed ? 'Concluído' : 'Pendente'}`).join('\n')}`
-  const share = async () => {
-    if (navigator.share) {
-      try { await navigator.share({ title: `Checklist — ${checklist.title}`, text: summaryText }); notify('Resumo compartilhado.') } catch { notify('Compartilhamento cancelado.') }
-    } else {
-      const blob = new Blob([summaryText], { type: 'text/plain;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url; anchor.download = `checklist-${checklist.id}.txt`; anchor.click(); URL.revokeObjectURL(url)
-      notify('Resumo baixado como arquivo de texto.')
-    }
-  }
-
-  return (
-    <div className="page narrow-page printable">
-      <PageTitle icon={<ClipboardCheck size={24} />} title={checklist.title} subtitle={checklist.environment} back={back} />
-      <div className="checklist-hero"><div className="progress-ring"><strong>{progress}%</strong><small>concluído</small></div><div><StatusBadge status={checklist.status}>{checklistLabel[checklist.status]}</StatusBadge><p>{complete} de {checklist.items.length} itens finalizados</p><div className="progress-line"><i style={{ width: `${progress}%` }} /></div></div></div>
-      {editable && <section className="add-item-box"><label className="field"><span>Nova pendência</span><input value={description} onChange={(event) => setDescription(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && addItem()} placeholder="O que precisa ser verificado ou corrigido?" /></label><button className="button primary" onClick={addItem}><Plus size={18} /> Adicionar</button></section>}
-      <div className="check-items">
-        {checklist.items.map((item, index) => (
-          <article className={item.completed ? 'check-item completed' : 'check-item'} key={item.id}>
-            <div className="check-item-header"><span className="check-index">{item.completed ? <Check size={17} /> : index + 1}</span><div><strong>{item.description}</strong><small>{item.completed ? 'Serviço concluído' : 'Pendência aberta'}</small></div>{editable && <button className="icon-button small" onClick={() => removeItem(item)} aria-label="Excluir item"><Trash2 size={17} /></button>}</div>
-            <div className="before-after"><div><span>Antes</span><SinglePhotoInput label="Foto antes" photo={item.beforePhoto} onPhoto={(photo) => updateItem(item.id, { beforePhoto: photo })} onRemove={async () => { if (item.beforePhoto) await deletePhoto(item.beforePhoto.id); updateItem(item.id, { beforePhoto: undefined }) }} disabled={!editable} notify={notify} /></div><div><span>Depois</span><SinglePhotoInput label="Foto depois" photo={item.afterPhoto} onPhoto={(photo) => updateItem(item.id, { afterPhoto: photo })} onRemove={async () => { if (item.afterPhoto) await deletePhoto(item.afterPhoto.id); updateItem(item.id, { afterPhoto: undefined }) }} disabled={!editable || !item.completed} notify={notify} /></div></div>
-            {editable && <button className={item.completed ? 'complete-toggle active' : 'complete-toggle'} disabled={!item.beforePhoto} onClick={() => updateItem(item.id, { completed: !item.completed, afterPhoto: item.completed ? undefined : item.afterPhoto })}>{item.completed ? <><CheckCircle2 size={18} /> Marcado como concluído</> : <><Check size={18} /> Marcar serviço concluído</>}</button>}
-          </article>
-        ))}
-        {!checklist.items.length && <EmptyState icon={<ListChecks size={30} />} title="Checklist vazio" text="Adicione a primeira pendência para começar a vistoria." />}
-      </div>
-      {editable && <button className="button primary wide main-cta" disabled={!ready} onClick={sendReview}><Send size={18} /> Enviar checklist para revisão</button>}
-      {user.role === 'office' && checklist.status === 'review' && <button className="button primary wide main-cta" onClick={publish}><FileCheck2 size={18} /> Publicar para o cliente</button>}
-      {checklist.status === 'published' && <div className="share-actions"><button className="button primary" onClick={share}><Share2 size={18} /> Compartilhar resumo</button><button className="button secondary" onClick={() => window.print()}><Printer size={18} /> Imprimir</button><button className="button ghost" onClick={share}><Download size={18} /> Baixar</button></div>}
-    </div>
-  )
+  return <div className="page narrow-page printable"><PageTitle icon={<ClipboardCheck size={24} />} title={checklist.title} subtitle={`${checklist.environment} · Vistoria de ${checklist.inspector}`} back={back} /><div className="checklist-hero"><div className="progress-ring"><strong>{progress}%</strong><small>qualidade</small></div><div><StatusBadge status={checklist.status}>{checklistLabel[checklist.status]}</StatusBadge><p>{checklist.items.length} itens · {checklist.publications.length} versão(ões) publicada(s)</p><div className="progress-line"><i style={{ width: `${progress}%` }} /></div></div></div>{user.role === 'office' && <section className="add-item-box"><label className="field"><span>Novo item durante a vistoria</span><input value={description} onChange={(event) => setDescription(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && addItem()} placeholder="O que deve ser verificado?" /></label><button className="button primary" onClick={addItem}><Plus size={18} /> Adicionar</button></section>}<div className="check-items">{checklist.items.map((item, index) => <article className={`check-item answer-${item.answer}`} key={item.id}><div className="check-item-header"><span className="check-index">{index + 1}</span><div><strong>{item.description}</strong><small>{checklistAnswerLabel[item.answer]}</small></div>{user.role === 'office' && <button className="icon-button small" onClick={() => removeItem(item)} aria-label={`Excluir item ${index + 1}`}><Trash2 size={17} /></button>}</div>{user.role === 'office' && <label className="field compact-field"><span>Resultado da vistoria</span><select aria-label={`Resultado do item ${index + 1}`} value={item.answer} onChange={(event) => changeAnswer(item, event.target.value as ChecklistAnswer)}>{Object.entries(checklistAnswerLabel).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>}{item.answer !== 'pending' && user.role === 'office' && <label className="field compact-field"><span>Observação pública</span><textarea rows={2} value={item.publicNote} onChange={(event) => updateItem(item.id, { publicNote: event.target.value })} /></label>}{item.answer === 'nonconform' && <section className="nonconform-box"><div className="nonconform-heading"><CircleAlert size={19} /><strong>Não conformidade</strong>{item.nonConformityStatus && <StatusBadge status={item.nonConformityStatus}>{nonConformityLabel[item.nonConformityStatus]}</StatusBadge>}</div>{user.role === 'office' && <><div className="template-grid"><label className="field compact-field"><span>Responsável por equipe/função *</span><input value={item.assignee} onChange={(event) => updateItem(item.id, { assignee: event.target.value })} /></label><label className="field compact-field"><span>Prazo *</span><input type="date" value={item.dueDate} onChange={(event) => updateItem(item.id, { dueDate: event.target.value })} /></label></div><label className="field compact-field"><span>Nota interna</span><textarea rows={2} value={item.internalNote} onChange={(event) => updateItem(item.id, { internalNote: event.target.value })} /></label></>}<div className="before-after"><div><span>Antes obrigatório</span><SinglePhotoInput label="Foto antes" photo={item.beforePhoto} onPhoto={(photo) => updateItem(item.id, { beforePhoto: photo })} onRemove={async () => { if (item.beforePhoto && !item.beforePhoto.demoAsset) await deletePhoto(item.beforePhoto.id); updateItem(item.id, { beforePhoto: undefined }) }} disabled={user.role !== 'office'} notify={notify} /></div><div><span>Depois</span><SinglePhotoInput label="Foto depois" photo={item.afterPhoto} onPhoto={(photo) => updateItem(item.id, { afterPhoto: photo, nonConformityStatus: 'in_correction' })} onRemove={async () => { if (item.afterPhoto && !item.afterPhoto.demoAsset) await deletePhoto(item.afterPhoto.id); updateItem(item.id, { afterPhoto: undefined }) }} disabled={user.role !== 'field' || item.nonConformityStatus === 'resolved'} notify={notify} /></div></div>{user.role === 'field' && item.nonConformityStatus !== 'resolved' && <><label className="field compact-field"><span>Descrição da correção *</span><textarea rows={3} value={item.correctionDescription ?? ''} onChange={(event) => updateItem(item.id, { correctionDescription: event.target.value, nonConformityStatus: 'in_correction' })} /></label><button className="button primary wide" onClick={() => requestValidation(item)}><Send size={18} /> Enviar correção para validação</button></>}{user.role === 'office' && item.nonConformityStatus === 'awaiting_validation' && <div className="validation-actions"><button className="button secondary" onClick={() => updateItem(item.id, { nonConformityStatus: 'reopened' })}><X size={17} /> Reabrir</button><button className="button primary" onClick={() => updateItem(item.id, { nonConformityStatus: 'resolved', validatedAt: new Date().toISOString(), validatedBy: user.name })}><CheckCircle2 size={17} /> Validar correção</button></div>}</section>}</article>)}</div>{user.role === 'office' && <button className="button primary wide main-cta" onClick={validatePublication}><FileCheck2 size={18} /> {checklist.publications.length ? 'Publicar nova versão' : 'Revisar e publicar'} </button>}{user.role === 'office' && checklist.publications.length > 0 && <section className="publication-history"><strong>Histórico de publicações</strong>{checklist.publications.map((item) => <span key={item.id}>Versão {item.version} · {formatDate(item.publishedAt)} · {item.isPartial ? 'Parcial' : 'Concluída'}</span>)}</section>}</div>
 }
 
 function AppShell({ user, screen, navigate, logout, children }: { user: DemoUser; screen: Screen; navigate: (screen: Screen) => void; logout: () => void; children: ReactNode }) {
@@ -974,8 +989,19 @@ export default function App() {
   else if (screen === 'purchase-new' && user.role === 'field') content = <PurchaseWizard user={user} data={data} back={() => navigate('purchases')} notify={setMessage} onConfirm={(newOrder) => { updateData((current) => ({ ...current, purchases: [newOrder, ...current.purchases] })); setMessage(`Pedido ${newOrder.number} registrado${newOrder.pendingSync ? ' e aguardando sincronização simulada' : ''}.`); navigate('purchases') }} />
   else if (screen === 'purchase-detail' && order && user.role !== 'client') content = <PurchaseDetail order={order} back={() => navigate('purchases')} />
   else if (screen === 'checklists') content = <ChecklistList user={user} data={data} navigate={navigate} openChecklist={(id) => { setSelectedChecklist(id); navigate('checklist-detail') }} />
-  else if (screen === 'checklist-new' && user.role === 'field') content = <ChecklistNew user={user} back={() => navigate('checklists')} notify={setMessage} onCreate={(created) => { updateData((current) => ({ ...current, checklists: [created, ...current.checklists] })); setSelectedChecklist(created.id); setMessage('Checklist criado. Adicione a primeira pendência.'); navigate('checklist-detail') }} />
-  else if (screen === 'checklist-detail' && checklist) content = <ChecklistDetail checklist={checklist} user={user} back={() => navigate('checklists')} notify={setMessage} update={(updated) => updateData((current) => ({ ...current, checklists: current.checklists.map((item) => item.id === updated.id ? updated : item) }))} publish={() => { updateData((current) => ({ ...current, checklists: current.checklists.map((item) => item.id === checklist.id ? { ...item, status: 'published', publishedAt: new Date().toISOString() } : item) })); setMessage('Checklist publicado para o cliente.') }} />
+  else if (screen === 'checklist-templates' && user.role === 'office') content = <ChecklistTemplateManager templates={data.checklistTemplates} back={() => navigate('checklists')} notify={setMessage} save={(template) => { updateData((current) => ({ ...current, checklistTemplates: current.checklistTemplates.some((item) => item.id === template.id) ? current.checklistTemplates.map((item) => item.id === template.id ? template : item) : [template, ...current.checklistTemplates] })); setMessage('Modelo ativo salvo. Vistorias existentes permaneceram inalteradas.') }} />
+  else if (screen === 'checklist-new' && user.role === 'office') content = <ChecklistNew user={user} templates={data.checklistTemplates} back={() => navigate('checklists')} notify={setMessage} onCreate={(created) => { updateData((current) => ({ ...current, checklists: [created, ...current.checklists] })); setSelectedChecklist(created.id); setMessage('Vistoria criada. Preencha os itens do checklist.'); navigate('checklist-detail') }} />
+  else if (screen === 'checklist-detail' && checklist) content = <ChecklistDetail checklist={checklist} user={user} back={() => navigate('checklists')} notify={setMessage} update={(updated) => updateData((current) => ({ ...current, checklists: current.checklists.map((item) => item.id === updated.id ? updated : item) }))} publish={() => {
+    const publishedAt = new Date().toISOString()
+    const publication: ChecklistPublication = {
+      id: uid('checklist-publication'), version: checklist.publications.length + 1, publishedAt, publishedBy: user.name,
+      isPartial: checklist.items.some((item) => item.answer === 'not_verified' || (item.answer === 'nonconform' && item.nonConformityStatus !== 'resolved')),
+      title: checklist.title, environment: checklist.environment, inspector: checklist.inspector, generalNotes: checklist.generalNotes,
+      items: checklist.items.map((item) => ({ id: item.id, description: item.description, answer: item.answer, publicNote: item.publicNote, assignee: item.assignee, dueDate: item.dueDate, nonConformityStatus: item.nonConformityStatus, beforePhoto: item.beforePhoto, afterPhoto: item.nonConformityStatus === 'resolved' ? item.afterPhoto : undefined, correctionDescription: item.nonConformityStatus === 'resolved' ? item.correctionDescription : undefined })),
+    }
+    updateData((current) => ({ ...current, checklists: current.checklists.map((item) => item.id === checklist.id ? { ...item, status: 'published', publishedAt, publications: [...item.publications, publication] } : item) }))
+    setMessage(`Checklist publicado como versão ${publication.version}${publication.isPartial ? ' parcial' : ''}.`)
+  }} />
   else content = <Dashboard user={user} data={data} navigate={navigate} />
 
   return <AppShell user={user} screen={screen} navigate={navigate} logout={logout}>{content}{message && <button className="toast" onClick={() => setMessage('')}><CheckCircle2 size={19} /> {message}</button>}</AppShell>

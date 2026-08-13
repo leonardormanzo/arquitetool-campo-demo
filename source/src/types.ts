@@ -1,7 +1,9 @@
 export type Role = 'field' | 'office' | 'client'
 export type DiaryStatus = 'draft' | 'review' | 'published'
 export type PurchaseStatus = 'solicitado' | 'em_aprovacao' | 'comprado' | 'entregue' | 'cancelado'
-export type ChecklistStatus = 'in_progress' | 'review' | 'published'
+export type ChecklistStatus = 'in_progress' | 'published'
+export type ChecklistAnswer = 'pending' | 'conform' | 'nonconform' | 'not_applicable' | 'not_verified'
+export type NonConformityStatus = 'open' | 'in_correction' | 'awaiting_validation' | 'resolved' | 'reopened'
 export type AIEvidenceSource = 'whatsapp' | 'photo' | 'meet'
 export type AIEvidenceStatus = 'new' | 'applied' | 'dismissed'
 export type DemoPhotoAsset = 'masonry' | 'electrical'
@@ -86,30 +88,83 @@ export interface PurchaseOrder {
   pendingSync?: boolean
 }
 
+export interface ChecklistTemplateItem {
+  id: string
+  description: string
+}
+
+export interface ChecklistTemplate {
+  id: string
+  title: string
+  category: string
+  environment: string
+  items: ChecklistTemplateItem[]
+  updatedAt: string
+}
+
 export interface ChecklistItem {
   id: string
   description: string
-  completed: boolean
+  answer: ChecklistAnswer
+  publicNote: string
+  internalNote: string
+  assignee: string
+  dueDate: string
+  nonConformityStatus?: NonConformityStatus
   beforePhoto?: PhotoReference
   afterPhoto?: PhotoReference
+  correctionDescription?: string
+  validatedAt?: string
+  validatedBy?: string
+}
+
+export interface PublishedChecklistItem {
+  id: string
+  description: string
+  answer: ChecklistAnswer
+  publicNote: string
+  assignee: string
+  dueDate: string
+  nonConformityStatus?: NonConformityStatus
+  beforePhoto?: PhotoReference
+  afterPhoto?: PhotoReference
+  correctionDescription?: string
+}
+
+export interface ChecklistPublication {
+  id: string
+  version: number
+  publishedAt: string
+  publishedBy: string
+  isPartial: boolean
+  title: string
+  environment: string
+  inspector: string
+  generalNotes: string
+  items: PublishedChecklistItem[]
 }
 
 export interface Checklist {
   id: string
   title: string
   environment: string
+  inspector: string
+  generalNotes: string
+  templateId?: string
   items: ChecklistItem[]
   status: ChecklistStatus
   createdBy: string
   createdAt: string
   publishedAt?: string
+  publications: ChecklistPublication[]
 }
 
 export interface AppData {
-  version: 2
+  version: 3
   diaries: DiaryEntry[]
   purchases: PurchaseOrder[]
   checklists: Checklist[]
+  checklistTemplates: ChecklistTemplate[]
   aiEvidence: AIEvidence[]
   onlineSimulation: boolean
 }

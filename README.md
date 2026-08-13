@@ -12,9 +12,9 @@ sem conexão com a internet.
 
 | Perfil | E-mail | Senha | Permissões |
 | --- | --- | --- | --- |
-| Campo | `campo@demo.arquitetool` | `campo123` | Revisa evidências da demonstração e cria Diários, pedidos e Checklists |
-| Escritório | `escritorio@demo.arquitetool` | `escritorio123` | Revisa evidências, publica conteúdo e atualiza Compras |
-| Cliente | `cliente@demo.arquitetool` | `cliente123` | Vê somente Diários e Checklists publicados |
+| Campo | `campo@demo.arquitetool` | `campo123` | Cria Diários e pedidos, executa correções e envia comprovações do Checklist |
+| Escritório | `escritorio@demo.arquitetool` | `escritorio123` | Cria modelos e vistorias, preenche, valida, publica e atualiza Compras |
+| Cliente | `cliente@demo.arquitetool` | `cliente123` | Vê somente Diários e versões de Checklist publicadas |
 
 Os acessos são fictícios e servem apenas para demonstrar visibilidade por
 perfil. Eles **não representam autenticação ou segurança real**.
@@ -88,10 +88,22 @@ modelo de IA.
 
 ### Checklist
 
-- Checklist por ambiente e cadastro de pendências.
-- Foto de “antes”, marcação de conclusão e foto de “depois”.
-- Comparativo visual, progresso e envio para revisão.
-- Publicação controlada para o Cliente.
+- O Escritório cria e sobrescreve modelos ativos reutilizáveis. Cada nova
+  vistoria copia os itens do modelo e não é alterada por edições futuras.
+- O Escritório inicia e preenche a vistoria com as respostas **Conforme**, **Não
+  conforme**, **Não se aplica** e **Não verificado**, podendo adicionar itens no
+  decorrer da inspeção.
+- Uma resposta “Não conforme” exige foto “antes”, observação pública,
+  responsável por equipe/função e prazo. A nota interna fica restrita ao
+  Escritório e ao Campo.
+- O Campo registra a correção, anexa obrigatoriamente a foto “depois” e envia a
+  comprovação. Somente o Escritório pode validar ou reabrir a pendência.
+- O Escritório pode publicar parcialmente, mesmo com não conformidades abertas.
+  Cada publicação gera uma versão imutável; alterações posteriores exigem uma
+  nova publicação.
+- O Cliente vê o Checklist completo da versão mais recente, incluindo não
+  conformidades, responsáveis por função, prazos e fotos aprovadas, mas nunca
+  notas internas, contatos pessoais, rascunhos ou correções não validadas.
 - Compartilhamento nativo quando disponível; download de resumo e impressão
   como alternativas.
 
@@ -131,6 +143,9 @@ Os tipos principais estão em `source/src/types.ts`:
   campos sugeridos e vínculo com o Diário.
 - `PurchaseOrder`: materiais, entrega, urgência e status.
 - `Checklist` / `ChecklistItem`: pendências, antes/depois e publicação.
+- `ChecklistTemplate`: modelo ativo reutilizável; sua edição não modifica os
+  snapshots de vistorias já criadas.
+- `ChecklistPublication`: versão pública imutável e sanitizada da vistoria.
 - `PhotoReference`: referência para a imagem mantida no banco local.
 
 Para integrar ao sistema real, substitua `storage.ts` por chamadas autenticadas
