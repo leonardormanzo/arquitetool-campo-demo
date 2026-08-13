@@ -37,6 +37,27 @@ describe('Arquitetool Campo', () => {
     expect(screen.queryByRole('button', { name: /^compras/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /copiloto/i })).not.toBeInTheDocument()
     expect(screen.getByText(/Compras, evidências da IA, rascunhos e alinhamentos internos não aparecem/i)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /resumo público da obra/i })).toBeInTheDocument()
+    expect(screen.getByText(/gerado somente a partir de conteúdo publicado/i)).toBeInTheDocument()
+    expect(screen.queryByText('Riscos e atrasos')).not.toBeInTheDocument()
+    expect(screen.queryByText('Materiais em atenção')).not.toBeInTheDocument()
+    expect(screen.queryByText(/detalhamento elétrico/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/30 sacos de argamassa/i)).not.toBeInTheDocument()
+  })
+
+  it('mostra ao Escritório um resumo operacional local com fontes rastreáveis', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await loginAs('Escritório')
+    expect(screen.getByRole('heading', { name: /resumo IA da obra/i })).toBeInTheDocument()
+    expect(screen.getByText(/nenhuma IA externa conectada/i)).toBeInTheDocument()
+    expect(screen.getByText('Riscos e atrasos')).toBeInTheDocument()
+    expect(screen.getByText('Materiais em atenção')).toBeInTheDocument()
+    const summary = screen.getByRole('heading', { name: /resumo IA da obra/i }).closest('section')
+    expect(summary).toBeTruthy()
+    expect(within(summary!).getByRole('button', { name: /^Compras$/i })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /atualizar resumo/i }))
+    expect(screen.getByText(/atualizado às/i)).toBeInTheDocument()
   })
 
   it('gera um rascunho rastreável a partir das evidências simuladas', async () => {

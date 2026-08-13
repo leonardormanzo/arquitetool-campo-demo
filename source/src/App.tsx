@@ -372,6 +372,7 @@ function Dashboard({ user, data, navigate }: { user: DemoUser; data: AppData; na
           <h1>Olá, {user.name.split(' ')[0]}</h1>
           <p>Acompanhe somente as atualizações revisadas e publicadas pela equipe.</p>
         </section>
+        <ProjectSummary user={user} data={data} navigate={navigate} />
         <div className="section-heading"><div><span className="eyebrow">Atualizações</span><h2>Conteúdo publicado</h2></div></div>
         <div className="client-grid">
           <button className="client-summary-card" onClick={() => navigate('diaries')}>
@@ -393,6 +394,7 @@ function Dashboard({ user, data, navigate }: { user: DemoUser; data: AppData; na
           <div><span className="eyebrow">Central do escritório</span><h1>Bom trabalho, {user.name.split(' ')[0]}</h1><p>Revise o que chegou do campo e publique atualizações com segurança.</p></div>
           <span className="large-counter">{reviewDiaries + reviewChecklists + approvalOrders + newAiEvidence}<small>ações pendentes</small></span>
         </section>
+        <ProjectSummary user={user} data={data} navigate={navigate} />
         <div className="action-grid four">
           <button className="action-card ai-action-card" onClick={() => navigate('ai-inbox')}><span className="action-icon"><Sparkles /></span><span><strong>Caixa de entrada IA</strong><small>{newAiEvidence} evidências para revisar</small></span><em>{newAiEvidence}</em><ChevronRight /></button>
           <button className="action-card" onClick={() => navigate('diaries')}><span className="action-icon"><BookOpenText /></span><span><strong>Diários</strong><small>{reviewDiaries} aguardando revisão</small></span><em>{reviewDiaries}</em><ChevronRight /></button>
@@ -417,6 +419,123 @@ function Dashboard({ user, data, navigate }: { user: DemoUser; data: AppData; na
       </div>
       <section className="tip-card"><span><Camera size={22} /></span><div><strong>Dica de campo</strong><p>Fotografe de frente e com boa luz. Isso facilita a conferência do escritório.</p></div></section>
     </div>
+  )
+}
+
+interface SummaryCopy {
+  overview: string
+  advances: string
+  attention: string
+  materials: string
+  nextActions: string
+}
+
+function buildOfficeSummary(data: AppData): SummaryCopy {
+  const latestDiary = data.diaries[0]
+  const reviewDiaries = data.diaries.filter((item) => item.status === 'review')
+  const reviewChecklists = data.checklists.filter((item) => item.status === 'review')
+  const materialOrders = data.purchases.filter((item) => !['entregue', 'cancelado'].includes(item.status))
+  const urgentOrders = materialOrders.filter((item) => item.urgency === 'urgente')
+  const newEvidence = data.aiEvidence.filter((item) => item.status === 'new')
+  const pendingCount = reviewDiaries.length + reviewChecklists.length + materialOrders.length + newEvidence.length
+
+  return {
+    overview: pendingCount > 0
+      ? `A obra segue em atividade, com ${pendingCount} ponto${pendingCount === 1 ? '' : 's'} pedindo acompanhamento do escritório.`
+      : 'A obra segue em atividade e não há pendências operacionais registradas neste aparelho.',
+    advances: latestDiary
+      ? latestDiary.weeklyServices
+      : 'Ainda não há um Diário de Obra disponível para identificar os avanços recentes.',
+    attention: reviewDiaries.length || reviewChecklists.length
+      ? `${reviewDiaries.length} diário${reviewDiaries.length === 1 ? '' : 's'} e ${reviewChecklists.length} checklist${reviewChecklists.length === 1 ? '' : 's'} aguardam revisão antes de qualquer publicação.`
+      : 'Não há Diários ou Checklists aguardando revisão.',
+    materials: materialOrders.length
+      ? `${materialOrders.length} pedido${materialOrders.length === 1 ? '' : 's'} em aberto${urgentOrders.length ? `, sendo ${urgentOrders.length} urgente${urgentOrders.length === 1 ? '' : 's'}` : ''}. Conferir prazo e continuidade das frentes.`
+      : 'Não há pedidos de material em aberto.',
+    nextActions: [
+      reviewDiaries.length ? `revisar ${reviewDiaries.length} diário${reviewDiaries.length === 1 ? '' : 's'}` : '',
+      reviewChecklists.length ? `validar ${reviewChecklists.length} checklist${reviewChecklists.length === 1 ? '' : 's'}` : '',
+      newEvidence.length ? `analisar ${newEvidence.length} evidência${newEvidence.length === 1 ? '' : 's'} do Copiloto` : '',
+    ].filter(Boolean).join('; ') || 'Manter o acompanhamento e publicar a próxima atualização quando houver novos registros.',
+  }
+}
+
+function buildClientSummary(data: AppData): SummaryCopy {
+  // Allowlist: somente dados já publicados alimentam a versão do Cliente.
+  const publishedDiaries = data.diaries.filter((item) => item.status === 'published')
+  const publishedChecklists = data.checklists.filter((item) => item.status === 'published')
+  const latestDiary = publishedDiaries[0]
+  const latestChecklist = publishedChecklists[0]
+  const completedItems = latestChecklist?.items.filter((item) => item.completed).length ?? 0
+  const totalItems = latestChecklist?.items.length ?? 0
+
+  return {
+    overview: publishedDiaries.length || publishedChecklists.length
+      ? 'A obra possui atualizações revisadas pelo escritório e disponíveis para acompanhamento.'
+      : 'O escritório ainda não publicou uma atualização da obra.',
+    advances: latestDiary?.weeklyServices ?? 'Os próximos avanços aparecerão após revisão e publicação pelo escritório.',
+    attention: latestChecklist
+      ? `${latestChecklist.title}: ${completedItems} de ${totalItems} item${totalItems === 1 ? '' : 's'} registrado${totalItems === 1 ? '' : 's'} como concluído${totalItems === 1 ? '' : 's'}.`
+      : 'Ainda não há checklist publicado para esta obra.',
+    materials: 'Informações operacionais e solicitações internas são protegidas e não fazem parte desta versão.',
+    nextActions: 'Novos registros serão apresentados aqui somente depois da revisão e publicação pelo escritório.',
+  }
+}
+
+function ProjectSummary({ user, data, navigate }: { user: DemoUser; data: AppData; navigate: (screen: Screen) => void }) {
+  const [refreshedAt, setRefreshedAt] = useState(() => new Date())
+  const clientView = user.role === 'client'
+  const summary = clientView ? buildClientSummary(data) : buildOfficeSummary(data)
+  const timeLabel = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(refreshedAt)
+  const sections = clientView
+    ? [
+        { title: 'Avanços publicados', body: summary.advances, icon: CheckCircle2 },
+        { title: 'Qualidade registrada', body: summary.attention, icon: ClipboardCheck },
+        { title: 'Privacidade', body: summary.materials, icon: ShieldCheck },
+        { title: 'Próxima atualização', body: summary.nextActions, icon: CalendarDays },
+      ]
+    : [
+        { title: 'Avanços recentes', body: summary.advances, icon: CheckCircle2 },
+        { title: 'Riscos e atrasos', body: summary.attention, icon: CircleAlert },
+        { title: 'Materiais em atenção', body: summary.materials, icon: ShoppingCart },
+        { title: 'Próximas ações', body: summary.nextActions, icon: ListChecks },
+      ]
+
+  return (
+    <section className={`project-summary ${clientView ? 'client-project-summary' : ''}`} aria-labelledby="project-summary-title">
+      <header className="project-summary-header">
+        <span className="project-summary-icon">{clientView ? <ShieldCheck size={24} /> : <Sparkles size={24} />}</span>
+        <div>
+          <span className="eyebrow">{clientView ? 'Visão publicada' : 'Análise operacional'}</span>
+          <h2 id="project-summary-title">{clientView ? 'Resumo público da obra' : 'Resumo IA da obra'}</h2>
+          <small>{clientView ? 'Gerado somente a partir de conteúdo publicado' : 'Demonstração local · nenhuma IA externa conectada'} · atualizado às {timeLabel}</small>
+        </div>
+        <button className="button secondary small" type="button" onClick={() => setRefreshedAt(new Date())}>
+          <RefreshCw size={16} /> Atualizar resumo
+        </button>
+      </header>
+      <div className="project-summary-overview">
+        <strong>Situação geral</strong>
+        <p>{summary.overview}</p>
+      </div>
+      <div className="project-summary-grid">
+        {sections.map(({ title, body, icon: Icon }) => (
+          <article key={title} className="project-summary-item">
+            <span><Icon size={18} /></span>
+            <div><h3>{title}</h3><p>{body}</p></div>
+          </article>
+        ))}
+      </div>
+      <footer className="project-summary-sources">
+        <span>Fontes desta análise</span>
+        <div>
+          <button type="button" onClick={() => navigate('diaries')}>Diários {clientView ? 'publicados' : ''}</button>
+          {!clientView && <button type="button" onClick={() => navigate('purchases')}>Compras</button>}
+          <button type="button" onClick={() => navigate('checklists')}>Checklists {clientView ? 'publicados' : ''}</button>
+          {!clientView && <button type="button" onClick={() => navigate('ai-inbox')}>Copiloto</button>}
+        </div>
+      </footer>
+    </section>
   )
 }
 

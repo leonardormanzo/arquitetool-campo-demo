@@ -52,6 +52,21 @@ Todo processamento desta tela é determinístico e local. Não há leitura real 
 WhatsApp, envio de fotos a terceiros, acesso ao Google Meet ou chamada a um
 modelo de IA.
 
+### Resumo inteligente da obra
+
+- O dashboard do Escritório reúne situação geral, avanços recentes, riscos,
+  materiais em atenção e próximas ações.
+- O botão **Atualizar resumo** recalcula o conteúdo localmente usando Diário,
+  Compras, Checklist e evidências do Copiloto disponíveis neste aparelho.
+- Os atalhos de fontes permitem abrir os módulos que sustentam a análise.
+- O Cliente recebe uma versão separada e filtrada, construída por uma lista
+  permitida que considera somente Diários e Checklists já publicados.
+- Compras, evidências brutas, justificativas internas, pendências de revisão e
+  detalhes sensíveis nunca alimentam o resumo do Cliente.
+- A demonstração não chama um modelo externo; a futura integração deve preservar
+  a separação entre resumo operacional e resumo público, com filtragem também no
+  servidor.
+
 ### Diário de Obra
 
 - Data e semana preenchidas automaticamente.

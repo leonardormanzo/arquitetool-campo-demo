@@ -133,6 +133,27 @@ button { cursor: pointer; }
 .large-counter { min-width: 138px; display: flex; flex-direction: column; align-items: center; font-family: "Plus Jakarta Sans"; font-size: 3rem; font-weight: 800; }
 .large-counter small { color: #bdbec2; font-family: Inter; font-size: .72rem; font-weight: 600; }
 
+.project-summary { margin-bottom: 26px; padding: 24px; overflow: hidden; border: 1px solid var(--primary-border); border-radius: 24px; box-shadow: var(--shadow-sm); background: linear-gradient(145deg, var(--surface), var(--surface-warm)); }
+.project-summary-header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; }
+.project-summary-icon { width: 48px; height: 48px; display: grid; place-items: center; color: white; border-radius: 15px; background: var(--primary); }
+.project-summary-header h2 { margin: 3px 0 4px; font-size: 1.25rem; letter-spacing: -.03em; }
+.project-summary-header small { color: var(--muted); font-size: .7rem; line-height: 1.45; }
+.project-summary-overview { margin-top: 20px; padding: 18px 20px; color: white; border-radius: 17px; background: var(--ink); }
+.project-summary-overview strong { display: block; margin-bottom: 6px; color: #df9e8c; font-size: .68rem; letter-spacing: .09em; text-transform: uppercase; }
+.project-summary-overview p { margin: 0; color: #e3e3e5; font-size: .9rem; line-height: 1.6; }
+.project-summary-grid { margin-top: 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.project-summary-item { min-width: 0; padding: 16px; display: flex; align-items: flex-start; gap: 11px; border: 1px solid var(--border); border-radius: 15px; background: var(--surface); }
+.project-summary-item > span { width: 34px; height: 34px; display: grid; place-items: center; flex: none; color: var(--primary); border-radius: 10px; background: var(--primary-soft); }
+.project-summary-item h3 { margin: 1px 0 5px; font-size: .78rem; }
+.project-summary-item p { margin: 0; color: var(--muted); font-size: .73rem; line-height: 1.55; }
+.project-summary-sources { margin-top: 16px; padding-top: 14px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-top: 1px solid var(--border); }
+.project-summary-sources > span { color: var(--muted); font-size: .68rem; font-weight: 700; }
+.project-summary-sources > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.project-summary-sources button { min-height: 32px; padding: 0 10px; color: var(--primary); border: 1px solid var(--primary-border); border-radius: 999px; background: var(--primary-soft); font-size: .66rem; font-weight: 800; }
+.project-summary-sources button:hover { color: white; background: var(--primary); }
+.client-project-summary { border-color: var(--border); background: var(--surface); }
+.client-project-summary .project-summary-icon { color: var(--success); background: var(--success-soft); }
+
 .action-grid { display: grid; gap: 16px; }
 .action-grid.three { grid-template-columns: repeat(3, 1fr); }
 .action-grid.four { grid-template-columns: repeat(4, 1fr); }
@@ -416,6 +437,7 @@ button { cursor: pointer; }
   .ai-evidence-grid { grid-template-columns: 1fr; }
   .ai-pipeline { grid-template-columns: 1fr 1fr; }
   .ai-pipeline > svg { display: none; }
+  .project-summary-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 600px) {
@@ -433,6 +455,13 @@ button { cursor: pointer; }
   .welcome-card::after { opacity: .75; }
   .day-progress { width: 100%; }
   .large-counter { align-items: flex-start; }
+  .project-summary { padding: 18px; border-radius: 20px; }
+  .project-summary-header { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+  .project-summary-header > .button { grid-column: 1 / -1; width: 100%; min-height: 48px; }
+  .project-summary-overview { padding: 16px; }
+  .project-summary-sources { align-items: flex-start; flex-direction: column; }
+  .project-summary-sources > div { width: 100%; justify-content: flex-start; }
+  .project-summary-sources button { min-height: 40px; }
   .record-card, .checklist-card { min-height: 92px; padding: 12px; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; }
   .record-card > .status-badge, .checklist-card > .status-badge { grid-column: 2; justify-self: start; }
   .record-card > svg, .checklist-card > svg { grid-column: 3; grid-row: 1 / 3; }
